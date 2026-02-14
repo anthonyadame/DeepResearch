@@ -1,0 +1,67 @@
+# Deep Research Agent - Consolidated Configuration
+# All API keys and service configurations
+
+# API Keys (Keep these secure - use environment variables in production)
+ApiKeys:
+  Tavily: "your-tavily-api-key-here"
+  Qdrant: "your-qdrant-api-key-here"
+
+# Service Endpoints
+Ollama:
+  BaseUrl: "http://localhost:11434"
+  DefaultModel: "gpt-oss:20b"
+
+SearXNG:
+  BaseUrl: "http://localhost:8080"
+
+Crawl4AI:
+  BaseUrl: "http://localhost:11235"
+
+Lightning:
+  ServerUrl: "http://localhost:8090"
+  
+LightningStore:
+  DataDirectory: "data"
+  FileName: "lightningstore.json"
+  UseLightningServer: true
+  ResourceNamespace: "facts"
+
+# Vector Database Configuration
+VectorDatabase:
+  Enabled: false
+  Qdrant:
+    BaseUrl: "http://localhost:6333"
+    ApiKey: ""  # Leave empty for no auth, or reference ApiKeys:Qdrant
+    CollectionName: "research"
+    VectorDimension: 384
+    TimeoutMs: 30000
+  EmbeddingModel: "nomic-embed-text"
+  EmbeddingApiUrl: "http://localhost:11434"
+
+# Web Search Configuration
+WebSearch:
+  Provider: "searxng"
+  TavilyApiKey: ""  # Set to ApiKeys:Tavily value when using Tavily
+  TavilyBaseUrl: "https://api.tavily.com"
+  RequestTimeoutSeconds: 30
+  DefaultMaxResults: 10
+  DefaultTopics: []
+
+# Iterative Clarification Settings
+IterativeClarification:
+  MaxIterations: 3
+  QualityThreshold: 75.0
+  EnableCritique: true
+  EnableQualityMetrics: true
+  MaxTimeoutSeconds: 60
+  UseIterativeAgent: false
+  StoreIterationHistory: true
+  MinCritiqueConfidence: 0.6
+
+# Logging
+Logging:
+  LogLevel:
+    Default: "Information"
+    Microsoft.AspNetCore: "Warning"
+
+AllowedHosts: "*"

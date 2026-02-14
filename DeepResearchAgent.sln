@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.4.11506.43 insiders
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DeepResearchAgent", "DeepResearchAgent\DeepResearchAgent.csproj", "{E140A775-9B89-06AD-237C-B56E4E7051EE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E140A775-9B89-06AD-237C-B56E4E7051EE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E140A775-9B89-06AD-237C-B56E4E7051EE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E140A775-9B89-06AD-237C-B56E4E7051EE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E140A775-9B89-06AD-237C-B56E4E7051EE}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {DFB37095-716E-4223-9794-844921F91ADB}
+	EndGlobalSection
+EndGlobal

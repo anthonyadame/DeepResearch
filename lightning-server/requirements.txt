@@ -1,0 +1,37 @@
+# Core Agent Lightning installation
+agentlightning>=0.2.0
+
+# APO (Agent Performance Optimization) support
+agentlightning[apo]
+
+# VERL (Verification and Reasoning Layer) support - Manual installation recommended
+agentlightning[verl]
+
+# PyTorch dependencies for VERL (CUDA 12.8 compatible)
+# For CPU-only, use: --index-url https://download.pytorch.org/whl/cpu
+torch==2.4.0
+torchvision==0.19.0
+
+# VERL-specific dependencies (manual installation for stability)
+flash-attn>=2.5.0
+vllm==0.6.3.post1
+
+# FastAPI and server dependencies
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# HTTP client
+httpx==0.26.0
+
+# OpenAI SDK (required for APO, version 2.0+)
+openai>=2.0.0
+
+# Monitoring and logging
+python-json-logger==2.0.7
+prometheus-client==0.19.0
+
+# Development and testing
+pytest==7.4.4
+pytest-asyncio==0.23.3

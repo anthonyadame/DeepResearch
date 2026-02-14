@@ -1,0 +1,355 @@
+services:
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # DOCKER COMPOSE QUICK START
+  # ═══════════════════════════════════════════════════════════════════════════════
+  #
+  # Before running these commands:
+  # 1. Update the Crawl4AI volume path with YOUR Windows username (search for <YourUser>)
+  # 2. Create browser profiles in WSL2 (see: BuildDocs/Decisions/CRAWL4AI_DOCKER_PROFILE_IDENTITY_PLAN.md)
+  #
+  # Start all services:
+  #   docker-compose up -d
+  #
+  #   -d flag = detached mode (runs in background)
+  #   Services start automatically and health checks run
+  #   Check logs: docker-compose logs -f [service-name]
+  #
+  # Stop all services (containers remain on disk):
+  #   docker-compose down
+  #
+  #   Stops all running containers
+  #   Removes containers and networks (but keeps volumes/data)
+  #   Next 'up' command will recreate containers from same volumes
+  #
+  # Common commands:
+  #   docker-compose ps              ← Check status of all services
+  #   docker-compose logs -f api     ← Follow logs from 'api' service
+  #   docker-compose exec api bash   ← Open shell in running container
+  #   docker-compose restart         ← Restart all services
+  #   docker-compose down -v         ← DANGER: Delete volumes too (lose data!)
+  #
+  # Troubleshooting:
+  #   If service won't start: docker-compose logs [service-name]
+  #   If port in use: docker-compose down && docker-compose up -d
+  #   If volume mount fails: Check Windows path in crawl4ai service
+  #
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # Ollama for local LLM inference (optional, remove if using external LLM)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: research-ollama
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - research-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0', '1', '2']
+              capabilities: [gpu]
+
+  caddy:
+    container_name: research-caddy
+    image: docker.io/library/caddy:2-alpine
+    network_mode: host
+    restart: unless-stopped
+    volumes:
+      - ./searxng/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data:rw
+      - caddy-config:/config:rw
+    environment:
+      - SEARXNG_HOSTNAME=${SEARXNG_HOSTNAME:-http://localhost}
+      - SEARXNG_TLS=${LETSENCRYPT_EMAIL:-internal}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "1"
+
+  # Redis for distributed caching and state management
+  redis:
+    image: redis:7-alpine
+    container_name: research-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis-data:/data
+    networks:
+      - research-network
+    command: redis-server --appendonly yes
+
+  # Redis Exporter for Prometheus
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: research-redis-exporter
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    networks:
+      - research-network
+    depends_on:
+      - redis
+
+  searxng:
+    container_name: research-searxng
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    networks:
+      - research-network
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-data:/var/cache/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=https://${SEARXNG_HOSTNAME:-localhost}/
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "1m"
+        max-file: "1"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+
+  # Crawl4AI - Web Scraping Service
+  # ⚠️ IMPORTANT: Update the volume path below to match your Windows username
+  # Replace <YourUser> with your actual Windows username (e.g., user, john.doe)
+  # Example: C:\Users\<user>\crawl4ai_profiles:/home/crawl4ai/profiles
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    container_name: research-crawl4ai
+    ports:
+      - "11235:11235"
+    environment:
+      API_PORT: 11235
+      LOG_LEVEL: INFO
+    volumes:
+      # Mounts host profile directory to Docker container
+      # Override CRAWL4AI_PROFILES_PATH to point at a persistent profiles folder
+      - ${CRAWL4AI_PROFILES_PATH:-./crawl4ai_profiles}:/home/crawl4ai/profiles
+    networks:
+      - research-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11235/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # ADD THIS LINE - Allocates shared memory for Chromium
+    shm_size: '2gb'
+
+  # Lightning Server - Agent Orchestration with APO & VERL
+  lightning-server:
+    image: lightning-server:cuda
+    container_name: research-lightning-server
+    ports:
+      - "8090:8090"
+    environment:
+      LIGHTNING_PORT: 8090
+      APO_ENABLED: "true"
+      VERL_ENABLED: "true"
+      APO_STRATEGY: "balanced"
+      APO_MAX_TASKS: 10
+      APO_TASK_TIMEOUT: 300
+      VERL_TRACKING_ENABLED: "true"
+      VERL_CONFIDENCE_THRESHOLD: 0.7
+      LOG_LEVEL: INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - lightning-data:/app/data
+    networks:
+      - research-network
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['3']
+              capabilities: [gpu]
+
+  # Qdrant - Vector Database for Semantic Search
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: research-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      LOG_LEVEL: info
+    networks:
+      - research-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  influxdb:
+    image: influxdb:2.7
+    container_name: research-influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_USERNAME:-admin}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_PASSWORD:-password}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG:-deep-research}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET:-research}
+      - DOCKER_INFLUXDB_INIT_RETENTION=30d
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN:-influx-token}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - influxdb-config:/etc/influxdb2
+    networks:
+      - research-network
+    healthcheck:
+      test: ["CMD", "influx", "ping", "--host", "http://localhost:8086"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+ 
+  
+
+  # Deep Research Agent (console workflow)
+  deep-research-agent:
+    build:
+      context: .
+      dockerfile: DeepResearchAgent/Dockerfile
+    container_name: research-agent
+    environment:
+      - Ollama__BaseUrl=http://ollama:11434
+      - Ollama__DefaultModel=gpt-oss:20b
+      - SearXNG__BaseUrl=http://searxng:8080
+      - Crawl4AI__BaseUrl=http://crawl4ai:11235
+      - Lightning__ServerUrl=http://lightning-server:8090
+    depends_on:
+      ollama:
+        condition: service_started
+      searxng:
+        condition: service_started
+      crawl4ai:
+        condition: service_started
+      lightning-server:
+        condition: service_started
+      redis:
+        condition: service_started
+    networks:
+      - research-network
+    tty: true
+
+  # Deep Research Agent API
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: DeepResearchAgent.Api/Dockerfile
+  #   container_name: research-api
+  #   ports:
+  #     - "6000:6000"
+  #   environment:
+  #     - ASPNETCORE_URLS=http://+:6000
+  #     - ASPNETCORE_ENVIRONMENT=Production
+  #     - Ollama__BaseUrl=http://ollama:11434
+  #     - Ollama__DefaultModel=gpt-oss:20b
+  #     - SearXNG__BaseUrl=http://searxng:8080
+  #     - Crawl4AI__BaseUrl=http://localhost:11235
+  #     - Lightning__ServerUrl=http://localhost:8090
+  #   depends_on:
+  #     ollama:
+  #       condition: service_started
+  #     redis:
+  #       condition: service_started
+  #     searxng:
+  #       condition: service_started
+  #   networks:
+  #     - research-network
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:6000/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 10s
+  #   restart: unless-stopped
+
+  # Deep Research Agent UI
+  # ui:
+  #   build:
+  #     context: .
+  #     dockerfile: DeepResearchAgent.UI/Dockerfile
+  #   container_name: research-ui
+  #   ports:
+  #     - "5173:5173"
+  #   environment:
+  #     - VITE_API_BASE_URL=http://localhost:6000/api
+  #   depends_on:
+  #     api:
+  #       condition: service_started
+  #   networks:
+  #     - research-network
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5173/index.html"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 30s
+  #   restart: unless-stopped
+
+
+networks:
+  research-network:
+    driver: bridge
+
+volumes:
+  caddy-data:
+  caddy-config:
+  valkey-data2:
+  searxng-data:
+  qdrant_storage:
+    driver: local
+  lightning-data:
+    driver: local
+  lightning-cache:
+    driver: local
+  redis-data:
+    driver: local
+  ollama_data:
+    driver: local
+  # prometheus-data:
+  #   driver: local
+  # grafana-data:
+  #   driver: local
+  influxdb-data:
+    driver: local
+  influxdb-config:
+    driver: local
+  # alertmanager-data:
+  #   driver: local
