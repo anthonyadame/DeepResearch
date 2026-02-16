@@ -96,3 +96,7 @@ appsettings.Local.json
 /DeepResearchAgent.Api/data/chat-sessions
 /searxng/.env
 /searxng/settings.yml
+/searxng/ .env
+/searxng/settings.yml
+/.github/copilot-instructions.md
+/BuildDocs/Planning/Ollama/OllamaPullPlanning.md
