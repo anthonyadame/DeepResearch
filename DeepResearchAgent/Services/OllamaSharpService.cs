@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Logging;
+using OllamaSharp;
+using OllamaSharp.Models;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -6,34 +8,27 @@ using System.Text.Json.Serialization;
 namespace DeepResearchAgent.Services;
 
 /// <summary>
-/// Represents a chat message in a conversation.
+/// Service wrapper for LLM integration with Ollama using the OllamaSharp library.
+/// Provides chat functionality using local Ollama models.
 /// </summary>
-public class OllamaChatMessage
+public class OllamaSharpService
 {
-    public required string Role { get; init; }
-    public required string Content { get; init; }
-}
-
-/// <summary>
-/// Service wrapper for LLM integration with Ollama.
-/// Provides chat functionality using local Ollama models via HTTP.
-/// </summary>
-public class OllamaService
-{
+    private readonly OllamaApiClient _ollamaClient;
     private readonly string _baseUrl;
     private readonly string _defaultModel;
     private readonly HttpClient _httpClient;
-    private readonly ILogger<OllamaService>? _logger;
+    private readonly ILogger<OllamaSharpService>? _logger;
 
     public string DefaultModel => _defaultModel;
 
-    public OllamaService(
+    public OllamaSharpService(
         string baseUrl = "http://localhost:11434",
         string defaultModel = "gpt-oss:20b",
         HttpClient? httpClient = null,
-        ILogger<OllamaService>? logger = null)
+        ILogger<OllamaSharpService>? logger = null)
     {
         _baseUrl = baseUrl.TrimEnd('/');
+        _ollamaClient = new OllamaApiClient(new Uri(baseUrl));
         _defaultModel = defaultModel;
         _httpClient = httpClient ?? new HttpClient();
         _logger = logger;
@@ -52,7 +47,7 @@ public class OllamaService
         {
             var selectedModel = model ?? _defaultModel;
 
-            _logger?.LogDebug("Invoking LLM with {model} model and {messageCount} messages", 
+            _logger?.LogDebug("Invoking LLM with {model} model and {messageCount} messages",
                 selectedModel, messages.Count);
 
             // Build request for Ollama API
@@ -102,7 +97,7 @@ public class OllamaService
         {
             _logger?.LogError(ex, "HTTP error connecting to Ollama at {url}", _baseUrl);
             throw new InvalidOperationException(
-                $"Failed to connect to Ollama at {_baseUrl}. Ensure Ollama is running. Error: {ex.Message}", 
+                $"Failed to connect to Ollama at {_baseUrl}. Ensure Ollama is running. Error: {ex.Message}",
                 ex);
         }
         catch (JsonException ex)
@@ -223,7 +218,7 @@ public class OllamaService
 
             // Try to parse as JSON
             var responseContent = response.Content ?? "{}";
-            
+
             // Remove markdown code blocks if present
             if (responseContent.StartsWith("```json"))
             {
@@ -243,7 +238,7 @@ public class OllamaService
 
             if (result == null)
             {
-                _logger?.LogWarning("Failed to deserialize LLM response to {type}: {content}", 
+                _logger?.LogWarning("Failed to deserialize LLM response to {type}: {content}",
                     typeof(T).Name, responseContent);
                 throw new InvalidOperationException(
                     $"Failed to parse LLM response as {typeof(T).Name}");
@@ -291,66 +286,6 @@ public class OllamaService
     }
 
     /// <summary>
-    /// Stream the progress of pulling a model from the Ollama registry.
-    /// Yields JSON responses containing pull progress information.
-    /// </summary>
-    public async IAsyncEnumerable<string> PullModelStreamingAsync(
-        string modelName,
-        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        _logger?.LogDebug("Starting streaming model pull for {model}", modelName);
-
-        // Build request for Ollama pull API
-        var request = new
-        {
-            name = modelName,
-            stream = true
-        };
-
-        var requestJson = JsonSerializer.Serialize(request);
-        var content = new StringContent(requestJson, System.Text.Encoding.UTF8, "application/json");
-
-        HttpResponseMessage response = null;
-        
-        // Make the request and handle errors
-        try
-        {
-            response = await _httpClient.PostAsync(
-                $"{_baseUrl}/api/pull",
-                content,
-                cancellationToken
-            );
-
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new HttpRequestException($"Ollama API returned {response.StatusCode}");
-            }
-        }
-        catch (HttpRequestException ex)
-        {
-            _logger?.LogError(ex, "HTTP error in streaming model pull");
-            throw new InvalidOperationException(
-                $"Failed to pull model from Ollama at {_baseUrl}. Error: {ex.Message}", 
-                ex);
-        }
-
-        // Stream processing - outside try-catch block to allow yield
-        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        using var reader = new System.IO.StreamReader(stream);
-
-        string? line;
-        while ((line = await reader.ReadLineAsync(cancellationToken)) != null)
-        {
-            if (string.IsNullOrWhiteSpace(line))
-                continue;
-
-            yield return line;
-        }
-
-        _logger?.LogDebug("Model pull streaming completed");
-    }
-
-    /// <summary>
     /// Get list of available models on the Ollama server.
     /// </summary>
     public async Task<List<string>> GetAvailableModelsAsync(CancellationToken cancellationToken = default)
@@ -390,5 +325,32 @@ public class OllamaService
             _logger?.LogError(ex, "Error fetching available models");
             return new List<string>();
         }
+    }
+
+    /// <summary>
+    /// Stream the progress of pulling a model from the Ollama registry.
+    /// Yields JSON responses containing pull progress information.
+    /// </summary>
+    public async IAsyncEnumerable<PullModelResponse> PullModelStreamingAsync(
+        string modelName,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        _logger?.LogDebug("Starting streaming model pull for {model}", modelName);
+
+        var request = new PullModelRequest
+        {
+            Model = modelName
+        };
+
+        await foreach (var response in _ollamaClient.PullModelAsync(request, cancellationToken))
+        {
+            if (response != null)
+            {
+                yield return response;
+            }
+        }
+
+        _logger?.LogDebug("Model pull streaming completed");
+        
     }
 }

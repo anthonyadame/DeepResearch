@@ -42,7 +42,7 @@ A sophisticated multi-agent research system converted from Python (LangGraph) to
    curl -fsSL https://ollama.com/install.sh | sh
    
    # Pull model
-   ollama pull mistral  # or your preferred model
+   ollama pull mistral:7b  # or your preferred model
    ```
 3. **Docker** (optional): For containerized deployment (includes SearXNG and Crawl4AI)
 
@@ -108,7 +108,7 @@ Edit `appsettings.json` to configure Ollama endpoint:
 {
   "Ollama": {
     "BaseUrl": "http://localhost:11434",
-    "DefaultModel": "mistral"
+    "DefaultModel": "mistral:7b"
   }
 }
 ```

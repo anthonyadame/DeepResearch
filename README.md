@@ -66,6 +66,39 @@ dotnet build
 3. **Install Ollama** (for local LLM):
    - Download from https://ollama.ai
    - Pull a model: `ollama pull gpt-oss:20b`
+4. **Setup SearXNG** Web Search:   - Edit the .env.example file to set the hostname and an email   - Rename it to .env   - Generate the secret key (See Below)  
+5. **Setup SearXNG** Web Search (Alternative setup):
+   - [Install docker](https://docs.docker.com/install/)
+   - Get searxng-docker
+
+   ```shell
+   git clone https://github.com/searxng/searxng-docker.git
+   cd searxng-docker
+   ```
+   - Edit the .env file to set the hostname and an email
+   - Generate the secret key
+   - Linux/MacOS:
+   
+   ```shell
+   # Generate a random 32-byte hex string and replace 'ultrasecretkey' in settings.yml 
+   
+   # Linux
+   sed -i "s|ultrasecretkey|$(openssl rand -hex 32)|g" searxng/settings.yml
+   
+   # MacOS
+   sed -i '' "s|ultrasecretkey|$(openssl rand -hex 32)|g" searxng/settings.yml
+   ```
+   
+   > [!NOTE]
+   > Windows users can use the following powershell script to generate the secret key:
+   > ```powershell
+   > $randomBytes = New-Object byte[] 32
+   > (New-Object Security.Cryptography.RNGCryptoServiceProvider).GetBytes($randomBytes)
+   > $secretKey = -join ($randomBytes | ForEach-Object { "{0:x2}" -f $_ })
+   > (Get-Content searxng/settings.yml) -replace 'ultrasecretkey', $secretKey | Set-Content searxng/settings.yml
+   > ```
+
+
 
 ### Basic Usage
 
