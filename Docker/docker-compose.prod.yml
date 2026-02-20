@@ -1,0 +1,60 @@
+version: '3.8'
+
+# Production-optimized docker-compose file
+# Use: docker-compose -f docker-compose.prod.yml up -d
+
+services:
+  deepresearch-api:
+    build:
+      context: ./Docker/DeepResearch
+      dockerfile: Dockerfile
+      cache_from:
+        - deepresearch-api:latest
+    image: deepresearch-api:latest
+    container_name: deepresearch-api-prod
+    ports:
+      - "80:5000"
+      - "443:5001"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5000
+      - Jwt__SecretKey=${JWT_SECRET_KEY:-change-this-in-production!}
+      - Jwt__Issuer=deepresearch-api
+      - Jwt__Audience=deepresearch-api
+      - Jwt__ExpirationMinutes=60
+      - Checkpointing__LocalStorageDirectory=/app/data/checkpoints
+      - Checkpointing__MaxCheckpointSizeBytes=52428800
+    volumes:
+      - deepresearch-checkpoints:/app/data/checkpoints
+      - deepresearch-logs:/app/logs
+    networks:
+      - deepresearch-network
+    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    labels:
+      - "com.deepresearch.description=DeepResearch API Service (Production)"
+      - "com.deepresearch.version=1.0"
+    security_opt:
+      - no-new-privileges:true
+    read_only_root_filesystem: true
+    tmpfs:
+      - /tmp
+      - /app/logs
+
+networks:
+  deepresearch-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+volumes:
+  deepresearch-checkpoints:
+    driver: local
+  deepresearch-logs:
+    driver: local

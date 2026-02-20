@@ -1,0 +1,66 @@
+version: '3.8'
+
+services:
+  deepresearch-api:
+    build:
+      context: ./Docker/DeepResearch
+      dockerfile: Dockerfile
+      args:
+        BUILD_CONFIGURATION: Debug
+    container_name: deepresearch-api
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5000
+      - Swagger__Enabled=true
+      - HttpsRedirection__Enabled=false
+      - Jwt__SecretKey=your-super-secret-key-must-be-at-least-32-characters-long-change-in-production!
+      - Jwt__Issuer=deepresearch-api
+      - Jwt__Audience=deepresearch-api
+      - Jwt__ExpirationMinutes=60
+      - Checkpointing__LocalStorageDirectory=/app/data/checkpoints
+      - DataProtection__KeysDirectory=/app/data/keys
+    volumes:
+      - ./data/checkpoints:/app/data/checkpoints
+      - ./data/keys:/app/data/keys
+      - ./logs:/app/logs
+    networks:
+      - deepresearch-api-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    labels:
+      - "com.deepresearch.description=DeepResearch Workflow API Service"
+      - "com.deepresearch.version=1.0"
+
+  # Optional: Redis for future caching/state management
+  redis:
+    image: redis:7-alpine
+    container_name: deepresearch-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - deepresearch-api-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    profiles:
+      - optional
+
+networks:
+  deepresearch-api-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local

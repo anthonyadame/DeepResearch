@@ -1,0 +1,307 @@
+{
+  "dashboard": {
+    "title": "DeepResearch Workflow & Checkpoint Monitoring",
+    "tags": ["deepresearch", "workflows", "checkpoints"],
+    "timezone": "browser",
+    "schemaVersion": 27,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Active Workflows",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "workflow_active_count",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 5, "color": "yellow" },
+                { "value": 10, "color": "red" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 }
+      },
+      {
+        "id": 2,
+        "title": "Paused Workflows",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "workflow_paused_count",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 3, "color": "yellow" },
+                { "value": 5, "color": "orange" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 }
+      },
+      {
+        "id": 3,
+        "title": "Total Checkpoints",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "checkpoint_active_count",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "short",
+            "color": {
+              "mode": "palette-classic"
+            }
+          }
+        },
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 }
+      },
+      {
+        "id": 4,
+        "title": "Checkpoint Storage",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "checkpoint_storage_bytes / 1024 / 1024",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "decmbytes",
+            "color": {
+              "mode": "thresholds"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "value": 0, "color": "green" },
+                { "value": 1000, "color": "yellow" },
+                { "value": 5000, "color": "red" }
+              ]
+            }
+          }
+        },
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 }
+      },
+      {
+        "id": 5,
+        "title": "Workflow Start Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(workflow_started_total[5m])",
+            "legendFormat": "{{workflow_type}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "label": "Workflows/sec" },
+          { "format": "short", "show": false }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 }
+      },
+      {
+        "id": 6,
+        "title": "Workflow Completion Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(workflow_completed_total[5m])",
+            "legendFormat": "Completed - {{workflow_type}}",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(workflow_failed_total[5m])",
+            "legendFormat": "Failed - {{workflow_type}}",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "label": "Workflows/sec" },
+          { "format": "short", "show": false }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 }
+      },
+      {
+        "id": 7,
+        "title": "Workflow Duration (p95)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(workflow_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{workflow_type}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "s", "label": "Duration" },
+          { "format": "short", "show": false }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 }
+      },
+      {
+        "id": 8,
+        "title": "Checkpoint Operations Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(checkpoint_saved_total[5m])",
+            "legendFormat": "Saved",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(checkpoint_loaded_total[5m])",
+            "legendFormat": "Loaded",
+            "refId": "B"
+          },
+          {
+            "expr": "rate(checkpoint_deleted_total[5m])",
+            "legendFormat": "Deleted",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "label": "Operations/sec" },
+          { "format": "short", "show": false }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 }
+      },
+      {
+        "id": 9,
+        "title": "Checkpoint Save Latency (p95)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(checkpoint_save_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{workflow_type}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          { "format": "s", "label": "Latency" },
+          { "format": "short", "show": false }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 }
+      },
+      {
+        "id": 10,
+        "title": "Checkpoint Size Distribution",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, rate(checkpoint_size_bytes_bucket[5m])) / 1024",
+            "legendFormat": "p50",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, rate(checkpoint_size_bytes_bucket[5m])) / 1024",
+            "legendFormat": "p95",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(checkpoint_size_bytes_bucket[5m])) / 1024",
+            "legendFormat": "p99",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          { "format": "deckbytes", "label": "Size (KB)" },
+          { "format": "short", "show": false }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 }
+      },
+      {
+        "id": 11,
+        "title": "Pause/Resume Operations",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(workflow_paused_total[5m])",
+            "legendFormat": "Paused",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(workflow_resumed_total[5m])",
+            "legendFormat": "Resumed",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "label": "Operations/sec" },
+          { "format": "short", "show": false }
+        ],
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 28 }
+      },
+      {
+        "id": 12,
+        "title": "Error Rate",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(workflow_failed_total[5m])",
+            "legendFormat": "Workflow Failures",
+            "refId": "A"
+          },
+          {
+            "expr": "rate(checkpoint_errors_total[5m])",
+            "legendFormat": "Checkpoint Errors",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          { "format": "short", "label": "Errors/sec" },
+          { "format": "short", "show": false }
+        ],
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {
+                "params": [0.1],
+                "type": "gt"
+              },
+              "operator": { "type": "and" },
+              "query": { "params": ["A", "5m", "now"] },
+              "reducer": { "params": [], "type": "avg" },
+              "type": "query"
+            }
+          ],
+          "executionErrorState": "alerting",
+          "frequency": "1m",
+          "handler": 1,
+          "name": "High Error Rate Alert",
+          "noDataState": "no_data",
+          "notifications": []
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 28 }
+      }
+    ]
+  }
+}

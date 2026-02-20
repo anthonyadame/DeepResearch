@@ -1,0 +1,31 @@
+# Development-specific overrides for docker-compose
+# Use: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+version: '3.8'
+
+services:
+  deepresearch-api:
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5000
+      - Swagger__Enabled=true
+      - HttpsRedirection__Enabled=false
+      - DOTNET_UsePollingFileWatcher=true
+      - DataProtection__KeysDirectory=/app/data/keys
+    volumes:
+      - .:/src
+      - /src/Docker/DeepResearch/DeepResearchAgent/bin
+      - /src/Docker/DeepResearch/DeepResearchAgent/obj
+      - /src/DeepResearch.Api/bin
+      - /src/DeepResearch.Api/obj
+      - ./data/keys:/app/data/keys
+    command: >
+      sh -c "cd /src && 
+             dotnet build &&
+             dotnet run --project DeepResearch.Api/DeepResearch.Api.csproj"
+    stdin_open: true
+    tty: true
+
+  redis:
+    profiles:
+      - default

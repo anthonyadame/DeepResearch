@@ -1,0 +1,45 @@
+global:
+  resolve_timeout: 5m
+
+route:
+  receiver: 'default'
+  group_by: ['alertname', 'cluster', 'service']
+  group_wait: 10s
+  group_interval: 10s
+  repeat_interval: 4h
+  routes:
+    # Critical workflow alerts
+    - match:
+        severity: critical
+        component: workflow
+      receiver: 'critical-workflow'
+      group_wait: 5s
+      repeat_interval: 1h
+
+    # Critical checkpoint alerts
+    - match:
+        severity: critical
+        component: checkpoint
+      receiver: 'critical-checkpoint'
+      group_wait: 5s
+      repeat_interval: 1h
+
+    # Warning alerts
+    - match:
+        severity: warning
+      receiver: 'warnings'
+      group_wait: 30s
+      repeat_interval: 4h
+
+receivers:
+  # Default receiver - logs to stdout
+  - name: 'default'
+
+  # Critical workflow receiver
+  - name: 'critical-workflow'
+
+  # Critical checkpoint receiver
+  - name: 'critical-checkpoint'
+
+  # Warning receiver
+  - name: 'warnings'

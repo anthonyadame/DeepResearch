@@ -66,7 +66,12 @@ dotnet build
 3. **Install Ollama** (for local LLM):
    - Download from https://ollama.ai
    - Pull a model: `ollama pull gpt-oss:20b`
-4. **Setup SearXNG** Web Search:   - Edit the .env.example file to set the hostname and an email   - Rename it to .env   - Generate the secret key (See Below)  
+
+4. **Setup SearXNG** Web Search:
+   - Edit the .env.example file to set the hostname and an email
+   - Rename it to .env
+   - Generate the secret key (See Below)
+  
 5. **Setup SearXNG** Web Search (Alternative setup):
    - [Install docker](https://docs.docker.com/install/)
    - Get searxng-docker

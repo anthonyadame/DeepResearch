@@ -1,0 +1,78 @@
+# SearXNG Configuration for Deep Research Agent
+# See https://docs.searxng.org/admin/settings/index.html for full documentation
+# see https://docs.searxng.org/admin/settings/settings.html#settings-use-default-settings
+use_default_settings: true
+general:
+  debug: false
+  instance_name: "Deep Research SearXNG"
+  contact_url: false
+  enable_metrics: false
+  limiter: false  # enable this when running the instance for a public usage on the internet
+  image_proxy: true
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  formats:
+    - html
+    - json
+
+server:
+  # base_url is defined in the SEARXNG_BASE_URL environment variable, see .env and docker-compose.yml
+  secret_key: "secret_key add here"  # change this!
+  limiter: false
+  image_proxy: false
+  http_protocol_version: "1.1"
+
+ui:
+  static_use_hash: true
+  default_theme: simple
+  query_in_title: true
+
+# Enable popular search engines
+engines:
+  - name: google
+    engine: google
+    shortcut: go
+    disabled: false
+    
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+    disabled: false
+    
+  - name: wikipedia
+    engine: wikipedia
+    shortcut: wp
+    disabled: false
+    language: en
+    
+  - name: reddit
+    engine: reddit
+    shortcut: re
+    disabled: false
+    
+  - name: arxiv
+    engine: arxiv
+    shortcut: arx
+    disabled: false
+    
+  - name: github
+    engine: github
+    shortcut: gh
+    disabled: false
+    
+  - name: stackoverflow
+    engine: stackoverflow
+    shortcut: so
+    disabled: false
+
+enabled_plugins: []
+
+doi_resolvers:
+  oadoi.org: 'https://oadoi.org/'
+  doi.org: 'https://doi.org/'
+
+default_doi_resolver: 'oadoi.org'
+redis:
+  url: redis://redis:6379/0

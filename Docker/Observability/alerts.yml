@@ -1,0 +1,136 @@
+# AlertManager Rules for DeepResearch Workflows
+
+groups:
+  - name: workflow_alerts
+    interval: 30s
+    rules:
+      # High failure rate alert
+      - alert: HighWorkflowFailureRate
+        expr: rate(workflow_failed_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          component: workflow
+        annotations:
+          summary: "High workflow failure rate detected"
+          description: "Workflow failure rate is {{ $value | humanize }} failures/sec over the last 5 minutes"
+          runbook_url: "https://docs.example.com/runbooks/workflow-failures"
+
+      # Workflow stuck alert
+      - alert: WorkflowStuck
+        expr: workflow_active_count > 0 and rate(workflow_completed_total[15m]) == 0
+        for: 30m
+        labels:
+          severity: warning
+          component: workflow
+        annotations:
+          summary: "Workflows may be stuck"
+          description: "No workflows have completed in the last 30 minutes, but {{ $value }} workflows are active"
+
+      # High pause rate
+      - alert: HighWorkflowPauseRate
+        expr: rate(workflow_paused_total[10m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          component: workflow
+        annotations:
+          summary: "High workflow pause rate"
+          description: "Workflows are being paused at a rate of {{ $value | humanize }}/sec"
+
+      # Slow workflow execution
+      - alert: SlowWorkflowExecution
+        expr: histogram_quantile(0.95, rate(workflow_duration_seconds_bucket[10m])) > 3600
+        for: 10m
+        labels:
+          severity: warning
+          component: workflow
+        annotations:
+          summary: "Workflows taking longer than expected"
+          description: "95th percentile workflow duration is {{ $value | humanizeDuration }}"
+
+  - name: checkpoint_alerts
+    interval: 30s
+    rules:
+      # High checkpoint error rate
+      - alert: HighCheckpointErrorRate
+        expr: rate(checkpoint_errors_total[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: checkpoint
+        annotations:
+          summary: "High checkpoint error rate"
+          description: "Checkpoint error rate is {{ $value | humanize }} errors/sec"
+          runbook_url: "https://docs.example.com/runbooks/checkpoint-errors"
+
+      # Checkpoint storage nearly full
+      - alert: CheckpointStorageHigh
+        expr: checkpoint_storage_bytes > 5000000000
+        for: 10m
+        labels:
+          severity: warning
+          component: checkpoint
+        annotations:
+          summary: "Checkpoint storage usage is high"
+          description: "Checkpoint storage is using {{ $value | humanize1024 }}B (> 5GB)"
+          runbook_url: "https://docs.example.com/runbooks/checkpoint-storage"
+
+      # Slow checkpoint save operations
+      - alert: SlowCheckpointSave
+        expr: histogram_quantile(0.95, rate(checkpoint_save_duration_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: checkpoint
+        annotations:
+          summary: "Checkpoint save operations are slow"
+          description: "95th percentile checkpoint save latency is {{ $value | humanizeDuration }}"
+
+      # Too many checkpoints per workflow
+      - alert: TooManyCheckpoints
+        expr: checkpoint_active_count / workflow_active_count > 20
+        for: 15m
+        labels:
+          severity: info
+          component: checkpoint
+        annotations:
+          summary: "High checkpoint-to-workflow ratio"
+          description: "Average of {{ $value | humanize }} checkpoints per workflow (may indicate cleanup issues)"
+
+  - name: system_health_alerts
+    interval: 30s
+    rules:
+      # Service down
+      - alert: DeepResearchServiceDown
+        expr: up{job="deepresearch-api"} == 0 or up{job="deepresearch-agent"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "DeepResearch service is down"
+          description: "{{ $labels.job }} has been down for more than 1 minute"
+          runbook_url: "https://docs.example.com/runbooks/service-down"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes{job=~"deepresearch.*"} / process_virtual_memory_max_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage detected"
+          description: "{{ $labels.job }} is using {{ $value | humanizePercentage }} of available memory"
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total{job=~"deepresearch.*"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage detected"
+          description: "{{ $labels.job }} CPU usage is {{ $value | humanizePercentage }}"

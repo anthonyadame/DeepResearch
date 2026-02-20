@@ -100,3 +100,4 @@ appsettings.Local.json
 /searxng/settings.yml
 /.github/copilot-instructions.md
 /BuildDocs/Planning/Ollama/OllamaPullPlanning.md
+/Docker/Websearch/searxng/ .env

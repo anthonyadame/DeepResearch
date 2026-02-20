@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements
-COPY requirements.txt .
+COPY Docker/lightning-server/requirements.txt .
 
 # Install PyTorch CPU version first
 RUN pip install --no-cache-dir \
@@ -77,7 +77,7 @@ RUN pip install --no-cache-dir \
 COPY --from=dashboard-builder /build/agent-lightning/agentlightning/dashboard /app/agentlightning/dashboard
 
 # Copy application code
-COPY server.py .
+COPY Docker/lightning-server/server.py .
 
 # Download NLTK data (required for textblob)
 RUN python -c "import nltk; nltk.download('punkt'); nltk.download('brown')"
@@ -168,7 +168,7 @@ RUN pip install --no-cache-dir \
 COPY --from=dashboard-builder /build/agent-lightning/agentlightning/dashboard /app/agentlightning/dashboard
 
 # Copy application code
-COPY server.py .
+COPY Docker/lightning-server/server.py .
 
 # Download NLTK data
 RUN python -c "import nltk; nltk.download('punkt'); nltk.download('brown')"

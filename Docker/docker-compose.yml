@@ -1,3 +1,5 @@
+name: deepresearch
+
 services:
   # ═══════════════════════════════════════════════════════════════════════════════
   # DOCKER COMPOSE QUICK START
@@ -66,7 +68,7 @@ services:
     network_mode: host
     restart: unless-stopped
     volumes:
-      - ./searxng/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./Websearch/searxng/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data:rw
       - caddy-config:/config:rw
     environment:
@@ -117,7 +119,7 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - ./Websearch/searxng/settings.yml:/etc/searxng/settings.yml:ro
       - searxng-data:/var/cache/searxng:rw
     environment:
       - SEARXNG_BASE_URL=https://${SEARXNG_HOSTNAME:-localhost}/
@@ -148,7 +150,7 @@ services:
     volumes:
       # Mounts host profile directory to Docker container
       # Override CRAWL4AI_PROFILES_PATH to point at a persistent profiles folder
-      - ${CRAWL4AI_PROFILES_PATH:-./crawl4ai_profiles}:/home/crawl4ai/profiles
+      - ${CRAWL4AI_PROFILES_PATH:-./Docker/Websearch/crawl4ai_profiles}:/home/crawl4ai/profiles
     networks:
       - research-network
     healthcheck:
@@ -161,7 +163,9 @@ services:
 
   # Lightning Server - Agent Orchestration with APO & VERL
   lightning-server:
-    image: lightning-server:cuda
+    build:
+      context: ..
+      dockerfile: Docker/lightning-server/Dockerfile
     container_name: research-lightning-server
     ports:
       - "8090:8090"
@@ -243,8 +247,8 @@ services:
   # Deep Research Agent (console workflow)
   deep-research-agent:
     build:
-      context: .
-      dockerfile: DeepResearchAgent/Dockerfile
+      context: ..
+      dockerfile: Docker/DeepResearch/Dockerfile
     container_name: research-agent
     environment:
       - Ollama__BaseUrl=http://ollama:11434
@@ -266,6 +270,48 @@ services:
     networks:
       - research-network
     tty: true
+
+  # Deep Research API (HTTP)
+  deepresearch-api:
+    build:
+      context: ..
+      dockerfile: Docker/DeepResearch/Dockerfile
+      args:
+        BUILD_CONFIGURATION: Debug
+    container_name: research-api
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:5000
+      - Swagger__Enabled=true
+      - HttpsRedirection__Enabled=false
+      - Jwt__SecretKey=your-super-secret-key-must-be-at-least-32-characters-long-change-in-production!
+      - Jwt__Issuer=deepresearch-api
+      - Jwt__Audience=deepresearch-api
+      - Jwt__ExpirationMinutes=60
+      - Lightning__ServerUrl=http://lightning-server:8090
+      - LightningStore__UseLightningServer=true
+      - Checkpointing__LocalStorageDirectory=/app/data/checkpoints
+      - DataProtection__KeysDirectory=/app/data/keys
+    depends_on:
+      lightning-server:
+        condition: service_started
+      redis:
+        condition: service_started
+    networks:
+      - research-network
+    volumes:
+      - ./data/checkpoints:/app/data/checkpoints
+      - ./data/keys:/app/data/keys
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
 
   # Deep Research Agent API
   # api:
@@ -300,29 +346,6 @@ services:
   #     start_period: 10s
   #   restart: unless-stopped
 
-  # Deep Research Agent UI
-  # ui:
-  #   build:
-  #     context: .
-  #     dockerfile: DeepResearchAgent.UI/Dockerfile
-  #   container_name: research-ui
-  #   ports:
-  #     - "5173:5173"
-  #   environment:
-  #     - VITE_API_BASE_URL=http://localhost:6000/api
-  #   depends_on:
-  #     api:
-  #       condition: service_started
-  #   networks:
-  #     - research-network
-  #   healthcheck:
-  #     test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5173/index.html"]
-  #     interval: 30s
-  #     timeout: 10s
-  #     retries: 3
-  #     start_period: 30s
-  #   restart: unless-stopped
-
 
 networks:
   research-network:
@@ -352,4 +375,4 @@ volumes:
   influxdb-config:
     driver: local
   # alertmanager-data:
-  #   driver: local
+  #   driver: local  #   driver: local
