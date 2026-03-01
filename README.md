@@ -54,7 +54,7 @@ The Deep Research Agent implements a **diffusion-based research refinement loop*
 
 1. **Clone the repository:**
 ```bash
-git clone https://github.com/anthonyadame/DeepResearchAgent.git
+git clone https://github.com/anthonyadame/DeepResearch.git
 cd DeepResearchAgent
 ```
 

@@ -55,7 +55,7 @@ docker-compose.override.yml
 
 # Ollama models (optional - can be large)
 *.gguf
-models/
+
 
 # Python (crawl4ai service)
 __pycache__/
@@ -101,3 +101,5 @@ appsettings.Local.json
 /.github/copilot-instructions.md
 /BuildDocs/Planning/Ollama/OllamaPullPlanning.md
 /Docker/Websearch/searxng/ .env
+/Docker/Websearch/searxng/settings.yml
+/Docker/data/keys
