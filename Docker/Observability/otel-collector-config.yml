@@ -21,7 +21,7 @@ processors:
 exporters:
   # Prometheus exporter for metrics
   prometheus:
-    endpoint: 0.0.0.0:8888
+    endpoint: 0.0.0.0:8889
 
   # Zipkin exporter (for distributed tracing)
   zipkin:

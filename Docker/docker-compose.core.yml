@@ -1,0 +1,182 @@
+name: deepresearch-core
+
+version: '3.8'
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # CORE STACK - API, Agent, Cache, Time-Series Metrics
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # This stack contains the core business logic and services
+  # Scaled separately from AI, Websearch, and Monitoring stacks
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  # Redis for distributed caching and state management
+  redis:
+    image: redis:7-alpine
+    container_name: research-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - redis-data:/data
+    networks:
+      - deepresearch-hub
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis Exporter for Prometheus metrics collection
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: research-redis-exporter
+    ports:
+      - "9121:9121"
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    networks:
+      - deepresearch-hub
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # InfluxDB for time-series metrics
+  influxdb:
+    image: influxdb:2.7
+    container_name: research-influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_USERNAME:-admin}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_PASSWORD:-password}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG:-deep-research}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET:-research}
+      - DOCKER_INFLUXDB_INIT_RETENTION=30d
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN:-influx-token}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - influxdb-config:/etc/influxdb2
+    networks:
+      - deepresearch-hub
+    healthcheck:
+      test: ["CMD", "influx", "ping", "--host", "http://localhost:8086"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Deep Research Agent (console workflow)
+  deep-research-agent:
+    build:
+      context: ..
+      dockerfile: Docker/DeepResearch/Dockerfile
+    container_name: research-agent
+    environment:
+      - Ollama__BaseUrl=http://ollama:11434
+      - Ollama__DefaultModel=gpt-oss:20b
+      - SearXNG__BaseUrl=http://searxng:8080
+      - Crawl4AI__BaseUrl=http://crawl4ai:11235
+      - Lightning__ServerUrl=http://lightning-server:8090
+      - Redis__Host=redis
+      - Redis__Port=6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - deepresearch-hub
+    tty: true
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Deep Research API (HTTP REST interface)
+  deepresearch-api:
+    build:
+      context: ..
+      dockerfile: Docker/DeepResearch/Dockerfile
+      args:
+        BUILD_CONFIGURATION: ${BUILD_CONFIGURATION:-Release}
+    container_name: research-api
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Production}
+      - ASPNETCORE_URLS=http://+:5000
+      - Swagger__Enabled=${SWAGGER_ENABLED:-true}
+      - HttpsRedirection__Enabled=false
+      - Jwt__SecretKey=${JWT_SECRET_KEY:-your-super-secret-key-must-be-at-least-32-characters-long-change-in-production!}
+      - Jwt__Issuer=${JWT_ISSUER:-deepresearch-api}
+      - Jwt__Audience=${JWT_AUDIENCE:-deepresearch-api}
+      - Jwt__ExpirationMinutes=${JWT_EXPIRATION_MINUTES:-60}
+      - Lightning__ServerUrl=http://lightning-server:8090
+      - LightningStore__UseLightningServer=true
+      - Checkpointing__LocalStorageDirectory=/app/data/checkpoints
+      - DataProtection__KeysDirectory=/app/data/keys
+      - Redis__Host=redis
+      - Redis__Port=6379
+      - Ollama__BaseUrl=http://ollama:11434
+      - SearXNG__BaseUrl=http://searxng:8080
+      - Crawl4AI__BaseUrl=http://crawl4ai:11235
+      - InfluxDB__Url=http://influxdb:8086
+      - InfluxDB__Organization=${INFLUXDB_ORG:-deep-research}
+      - InfluxDB__Bucket=${INFLUXDB_BUCKET:-research}
+      - InfluxDB__Token=${INFLUXDB_TOKEN:-influx-token}
+    depends_on:
+      redis:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    networks:
+      - deepresearch-hub
+    volumes:
+      - ./data/checkpoints:/app/data/checkpoints
+      - ./data/keys:/app/data/keys
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  deepresearch-hub:
+    external: true
+    driver: bridge
+
+volumes:
+  redis-data:
+    driver: local
+  influxdb-data:
+    driver: local
+  influxdb-config:
+    driver: local

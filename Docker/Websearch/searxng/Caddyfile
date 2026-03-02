@@ -22,7 +22,7 @@
 	servers {
 		client_ip_headers X-Forwarded-For X-Real-IP
 
-		# Allow the following IP to passthrough the "X-Forwarded-*" headers to SearXNG
+		# Allow the following IP to passthrough the "X-Forwarded-*" headers
 		# https://caddyserver.com/docs/caddyfile/options#trusted-proxies
 		trusted_proxies static private_ranges
 		trusted_proxies_strict
@@ -35,6 +35,11 @@ tls {$SEARXNG_TLS}
 
 encode zstd gzip
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# ROUTE MATCHERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# API endpoints for SearXNG
 @api {
 	path /config
 	path /healthz
@@ -42,12 +47,31 @@ encode zstd gzip
 	path /stats/checker
 }
 
+# Static assets
 @static {
 	path /static/*
 }
 
+# Image proxy
 @imageproxy {
 	path /image_proxy
+}
+
+# Health check endpoint for monitoring
+@health {
+	path /health
+}
+
+# Crawl4AI routes
+@crawl {
+	path /crawl/*
+	path /api/crawl/*
+}
+
+# API routes (to deepresearch-api)
+@api-routes {
+	path /api/*
+	path /swagger/*
 }
 
 header {
@@ -65,10 +89,9 @@ header {
 
 	# Comment header to allow indexing by search engines
 	X-Robots-Tag "noindex, nofollow, noarchive, nositelinkssearchbox, nosnippet, notranslate, noimageindex"
-    
+
 	# enable HSTS
 	# WARNING: Once this value is set, the site must continue to support HTTPS until the expiry time is reached.
-
 	# Strict-Transport-Security max-age=15768000;
 
 	# Remove "Server" header
@@ -87,5 +110,32 @@ route {
 	header @imageproxy Cache-Control "public, max-age=3600"
 }
 
-# SearXNG
-reverse_proxy localhost:8080
+# ═══════════════════════════════════════════════════════════════════════════════
+# REVERSE PROXY ROUTES
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# Health check endpoint (local)
+handle @health {
+	respond 200 {
+		body "OK"
+	}
+}
+
+# SearXNG (Websearch Stack)
+handle @api {
+	reverse_proxy searxng:8080
+}
+
+handle / {
+	reverse_proxy searxng:8080
+}
+
+# Crawl4AI routes (Websearch Stack)
+handle @crawl {
+	reverse_proxy crawl4ai:11235
+}
+
+# DeepResearch API routes (Core Stack)
+handle @api-routes {
+	reverse_proxy deepresearch-api:5000
+}

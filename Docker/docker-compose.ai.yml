@@ -1,0 +1,124 @@
+name: deepresearch-ai
+
+version: '3.8'
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # AI STACK - LLM Inference, Vector Database, Agent Orchestration
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # This stack contains machine learning and AI services
+  # GPU-optimized for inference and vector operations
+  # Can be deployed independently with dedicated GPU hardware
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  # Ollama for local LLM inference
+  ollama:
+    image: ollama/ollama:latest
+    container_name: research-ollama
+    ports:
+      - "11434:11434"
+    environment:
+      OLLAMA_HOST: 0.0.0.0:11434
+      OLLAMA_MODELS: /root/.ollama/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - deepresearch-hub
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0', '1', '2']
+              capabilities: [gpu]
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Qdrant for vector semantic search and embeddings
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: research-qdrant
+    ports:
+      - "6333:6333"
+    environment:
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-}
+      LOG_LEVEL: info
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    networks:
+      - deepresearch-hub
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Lightning Server - Agent Orchestration with APO & VERL
+  lightning-server:
+    build:
+      context: ..
+      dockerfile: Docker/lightning-server/Dockerfile
+    container_name: research-lightning-server
+    ports:
+      - "8090:8090"
+    environment:
+      LIGHTNING_PORT: 8090
+      APO_ENABLED: "true"
+      VERL_ENABLED: "true"
+      APO_STRATEGY: "balanced"
+      APO_MAX_TASKS: 10
+      APO_TASK_TIMEOUT: 300
+      VERL_TRACKING_ENABLED: "true"
+      VERL_CONFIDENCE_THRESHOLD: 0.7
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - lightning-data:/app/data
+    networks:
+      - deepresearch-hub
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['3']
+              capabilities: [gpu]
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  deepresearch-hub:
+    external: true
+    driver: bridge
+
+volumes:
+  ollama_data:
+    driver: local
+  qdrant_storage:
+    driver: local
+  lightning-data:
+    driver: local

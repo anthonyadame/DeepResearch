@@ -1,381 +1,691 @@
 # Docker Guide for DeepResearch
 
 **Updated**: 2026-02-20  
-**Stack Names**: deepresearch (main), monitoring (observability)  
-**Status**: ✅ Fully Operational
+**Status**: ✅ 4-Stack Unified Architecture ACTIVE  
+**Architecture**: 4 Separate Stacks on Unified Network (deepresearch-hub)  
+**Production Ready**: Yes
 
-This guide explains how to build and run DeepResearch using Docker Compose with multiple stacks.
+---
 
-## Quick Start - Main Stack (deepresearch)
+## Quick Start - Using Deployment Scripts
 
-### Build and Run
+### Windows (PowerShell)
 
-```bash
-# From project root: C:\RepoEx\PhoenixAI\DeepResearch
-cd C:\RepoEx\PhoenixAI\DeepResearch
+```powershell
+cd Docker
 
-# Start all services
-docker-compose -f Docker/docker-compose.yml up -d
+# Start all 4 stacks (creates network automatically)
+./deploy-stacks.ps1 -Action start
 
 # Check status
-docker-compose -f Docker/docker-compose.yml ps
+./deploy-stacks.ps1 -Action status
+
+# View health
+./deploy-stacks.ps1 -Action health
 
 # View logs
-docker-compose -f Docker/docker-compose.yml logs -f api
+./deploy-stacks.ps1 -Action logs -Stack core
+./deploy-stacks.ps1 -Action logs -Stack ai
+./deploy-stacks.ps1 -Action logs -Stack websearch
+./deploy-stacks.ps1 -Action logs -Stack monitoring
+
+# Stop all stacks
+./deploy-stacks.ps1 -Action stop
+
+# Full validation
+./deploy-stacks.ps1 -Action validate
 ```
 
-### Access the Application
+### Linux/Mac (Bash)
 
+```bash
+cd Docker
+
+# Start all 4 stacks
+./deploy-stacks.sh start
+
+# Check status
+./deploy-stacks.sh status
+
+# View health
+./deploy-stacks.sh health
+
+# View logs
+./deploy-stacks.sh logs core
+./deploy-stacks.sh logs ai
+./deploy-stacks.sh logs websearch
+./deploy-stacks.sh logs monitoring
+
+# Stop all stacks
+./deploy-stacks.sh stop
+
+# Full validation
+./deploy-stacks.sh validate
+```
+
+### Manual Deployment (Advanced)
+
+```bash
+# Create network (automatic in scripts)
+docker network create deepresearch-hub --driver bridge
+
+# Start stacks in order
+docker-compose -f Docker/docker-compose.core.yml up -d
+docker-compose -f Docker/docker-compose.websearch.yml up -d
+docker-compose -f Docker/docker-compose.ai.yml up -d
+docker-compose -f Docker/Observability/docker-compose-monitoring.yml up -d
+
+# Verify all services
+docker ps | grep deepresearch
+```
+
+## Access Points
+
+### Core Services
 - **API**: http://localhost:5000
 - **Health Check**: http://localhost:5000/health
 - **Swagger UI**: http://localhost:5000/swagger/ui/index.html
+- **Redis CLI**: `docker-compose -f Docker/docker-compose.core.yml exec redis redis-cli`
+- **InfluxDB**: http://localhost:8086
 
-## Quick Start - Monitoring Stack (monitoring)
+### AI Services
+- **Ollama**: http://localhost:11434/api/tags
+- **Qdrant**: http://localhost:6333/health
+- **Lightning Server**: http://localhost:8090
 
-### Start Monitoring
+### Websearch Services  
+- **SearXNG**: http://localhost:8080
+- **Crawl4AI**: http://localhost:11235/crawl
+- **Caddy Reverse Proxy**: http://localhost:80 (HTTP)
 
-```bash
-# Start monitoring services
-docker-compose -f Docker/Observability/docker-compose-monitoring.yml up -d
-
-# Check status
-docker-compose -f Docker/Observability/docker-compose-monitoring.yml ps
-```
-
-### Access Monitoring Services
-
+### Monitoring Services
 - **Prometheus**: http://localhost:9090
 - **Grafana**: http://localhost:3001 (admin/admin)
 - **AlertManager**: http://localhost:9093
-- **Jaeger**: http://localhost:16686
+- **Jaeger UI**: http://localhost:16686
+- **OTEL Collector**: http://localhost:13133 (health)
 
 ## Stack Composition
 
-### Stack 1: DeepResearch (deepresearch)
+### Stack 1: Core Services
 
-**11 Services:**
-- API: Deep Research API (.NET 8.0) - port 5000
-- Agent: Deep Research Agent (console) - CLI interface
-- Ollama: LLM inference service - port 11434
-- Crawl4AI: Web scraping service - port 11235
-- Lightning: Agent orchestration (APO/VERL) - port 8090
-- Redis: Distributed cache - port 6379
-- Qdrant: Vector database - port 6333
-- InfluxDB: Time-series metrics - port 8086
-- SearXNG: Meta search engine - port 8080
-- Caddy: Reverse proxy/TLS - ports 80/443
-- Redis-Exporter: Prometheus metrics - port 9121
+**File**: `docker-compose.core.yml`  
+**Services**: 5  
+**Network**: deepresearch-hub  
+**GPU Required**: No
 
-**Network**: research-network (bridge)
+1. **deepresearch-api** (.NET 8.0 ASP.NET Core) - port 5000
+   - Main API for research operations
+   - Depends on: redis, influxdb
+   - Connects to: ollama, qdrant, lightning, searxng, crawl4ai
 
-### Stack 2: Monitoring (monitoring)
+2. **deep-research-agent** (Console application)
+   - CLI interface for agent operations
+   - Depends on: redis
 
-**6 Services:**
-- Prometheus: Metrics collection - port 9090
-- Grafana: Dashboard visualization - port 3001
-- AlertManager: Alert routing - port 9093
-- Jaeger: Distributed tracing - port 16686
-- Monitoring API: Custom monitoring - port 5001
-- Monitoring Service: Monitoring logic - port 8081
+3. **redis** (Redis 7.0) - port 6379
+   - Distributed cache and session store
+   - Persistent storage: redis-data volume
 
-**Network**: monitoring_monitoring (bridge)
+4. **redis-exporter** (Prometheus Redis Exporter) - port 9121
+   - Exports Redis metrics for Prometheus
+   - Monitored by: prometheus scrape job
 
-## Docker Compose Files
+5. **influxdb** (InfluxDB 2.0) - port 8086
+   - Time-series database for metrics
+   - Persistent storage: influxdb-data volume
 
-### Docker/docker-compose.yml (Main Stack)
+### Stack 2: AI Services
 
-**Stack Name**: `deepresearch`  
-**Purpose**: Complete application with all services  
-**Contexts**:
-- API/Agent: context=.. dockerfile=Docker/DeepResearch/Dockerfile
-- Lightning: context=.. dockerfile=Docker/lightning-server/Dockerfile
+**File**: `docker-compose.ai.yml`  
+**Services**: 3  
+**Network**: deepresearch-hub  
+**GPU Required**: Yes (NVIDIA)  
+**GPU Allocation**:
+- Ollama: GPU 0,1,2 (multiple GPUs for large models)
+- Lightning: GPU 3 (separate for orchestration)
 
+1. **ollama** (Ollama LLM Inference) - port 11434
+   - Large Language Model inference engine
+   - Models: Customizable via environment
+   - GPU: Primary (0,1,2)
+   - Persistent storage: ollama_data volume
+
+2. **qdrant** (Qdrant Vector Database) - port 6333
+   - Vector storage for embeddings and semantic search
+   - Persistent storage: qdrant_storage volume
+
+3. **lightning-server** (Lightning Orchestration) - port 8090
+   - Agent framework orchestration
+   - Supports: APO (Agentic Policy Optimization), VERL (Vector Inference)
+   - GPU: Dedicated (device 3)
+   - Persistent storage: lightning-data volume
+
+### Stack 3: Websearch Services
+
+**File**: `docker-compose.websearch.yml`  
+**Services**: 3  
+**Network**: deepresearch-hub  
+**GPU Required**: No
+
+1. **caddy** (Caddy Reverse Proxy) - ports 80/443
+   - Unified reverse proxy for all web traffic
+   - Routes:
+     - /search → searxng:8080
+     - /crawl → crawl4ai:11235
+     - /api → deepresearch-api:5000 (via network)
+   - Features: TLS termination, compression, middleware
+   - Persistent storage: caddy-data, caddy-config volumes
+
+2. **searxng** (SearXNG Meta Search) - port 8080
+   - Meta search engine aggregating results from multiple sources
+   - Independent scaling possible
+   - Persistent storage: searxng-data volume
+
+3. **crawl4ai** (Crawl4AI Web Scraper) - port 11235
+   - Intelligent web scraping and content extraction
+   - Browser automation support
+   - Persistent storage: crawl4ai_profiles volume
+
+### Stack 4: Monitoring Services
+
+**File**: `docker-compose-monitoring.yml`  
+**Services**: 5  
+**Network**: deepresearch-hub  
+**GPU Required**: No
+
+1. **prometheus** (Prometheus) - port 9090
+   - Metrics collection and time-series database
+   - Scrape targets: 4 (redis-exporter, core, websearch, ai)
+   - Retention: 15 days (configurable)
+   - Persistent storage: prometheus-data volume
+
+2. **grafana** (Grafana) - port 3001
+   - Metrics visualization and dashboarding
+   - Default credentials: admin/admin (CHANGE IN PRODUCTION)
+   - Data source: Prometheus
+   - Persistent storage: grafana-data volume
+
+3. **alertmanager** (Alertmanager) - port 9093
+   - Alert routing and management
+   - Integrations: Email, PagerDuty, Slack, Webhooks
+   - Persistent storage: alertmanager-data volume
+
+4. **jaeger** (Jaeger UI) - port 16686
+   - Distributed tracing visualization
+   - Traces from: OTEL Collector
+   - Persistent storage: jaeger-data volume
+
+5. **otel-collector** (OpenTelemetry Collector) - ports 4317/4318, 8889, 13133
+   - Telemetry collection and processing
+   - Receivers: OTLP (gRPC/HTTP), metrics, traces
+   - Exporters: Prometheus (:8889), Zipkin (jaeger), Debug
+   - Health check: :13133
+
+---
+
+## Stack Composition (Detailed Table)
+
+## Docker Compose Files (4-Stack Architecture)
+
+### Orchestration & Automation Scripts
+
+**Docker/deploy-stacks.ps1** (PowerShell - 450+ lines)  
+**Docker/deploy-stacks.sh** (Bash - 420+ lines)
+
+Unified scripts for managing all 4 stacks:
+- **Actions**: start, stop, restart, status, logs, health, validate, cleanup
+- **Stacks**: core, ai, websearch, monitoring (or 'all')
+- **Examples**:
+  ```powershell
+  ./deploy-stacks.ps1 -Action start                 # Start all
+  ./deploy-stacks.ps1 -Action status                # Status all
+  ./deploy-stacks.ps1 -Action logs -Stack ai        # AI logs
+  ./deploy-stacks.ps1 -Action health -Stack core    # Core health
+  ```
+
+### Core Stack
+
+**File**: `Docker/docker-compose.core.yml`  
+**Purpose**: Foundational services (API, cache, database)  
+**Commands**:
 ```bash
-docker-compose -f Docker/docker-compose.yml up -d
+docker-compose -f Docker/docker-compose.core.yml up -d    # Start
+docker-compose -f Docker/docker-compose.core.yml down      # Stop
+docker-compose -f Docker/docker-compose.core.yml logs -f   # Logs
 ```
 
-### Docker/Observability/docker-compose-monitoring.yml (Monitoring)
+### AI Stack
 
-**Stack Name**: `monitoring`  
-**Purpose**: Observability, metrics, and tracing  
-**Port Mapping Changes**:
-- Grafana: 3001 (was 3000 - conflict with open-webui)
-- API: 5001 (was 5000 - conflict with main API)
+**File**: `Docker/docker-compose.ai.yml`  
+**Purpose**: Machine learning inference and vector storage  
+**GPU Enabled**: Yes (nvidia-runtime)  
+**Commands**:
+```bash
+docker-compose -f Docker/docker-compose.ai.yml up -d       # Start
+nvidia-smi                                                  # Monitor GPU
+docker-compose -f Docker/docker-compose.ai.yml logs ollama # Ollama logs
+```
 
+### Websearch Stack
+
+**File**: `Docker/docker-compose.websearch.yml`  
+**Purpose**: Web discovery and reverse proxy  
+**Commands**:
+```bash
+docker-compose -f Docker/docker-compose.websearch.yml up -d
+curl http://localhost:8080/stats  # SearXNG health
+curl http://localhost:80          # Caddy health
+```
+
+### Monitoring Stack
+
+**File**: `Docker/Observability/docker-compose-monitoring.yml`  
+**Purpose**: Observability, metrics, tracing, alerting  
+**Commands**:
 ```bash
 docker-compose -f Docker/Observability/docker-compose-monitoring.yml up -d
+curl http://localhost:9090/health     # Prometheus health
+curl http://localhost:3001            # Grafana health
 ```
-
-### Other Compose Files
-
-- **Docker/docker-compose.api.yml**: API-only (lightweight development)
-- **Docker/docker-compose.dev.yml**: Development overrides (hot reload)
-- **Docker/docker-compose.prod.yml**: Production optimized
 
 ## Configuration
 
-### Environment Files
+### Environment Files (Stack-Specific)
 
-**Docker/.env** (Main Stack):
-```
-SEARXNG_HOSTNAME=localhost
+**Docker/.env** (Core Stack)
+```env
+# Core API Configuration
+ASPNETCORE_ENVIRONMENT=Production
+ASPNETCORE_URLS=http://+:5000
+Swagger__Enabled=true
+HttpsRedirection__Enabled=false
+
+# JWT Authentication  
+Jwt__SecretKey=your-secret-key-minimum-32-characters
+Jwt__Issuer=deepresearch-api
+Jwt__Audience=deepresearch-api
+Jwt__ExpirationMinutes=60
+
+# Database
 INFLUXDB_USERNAME=admin
 INFLUXDB_PASSWORD=password
 INFLUXDB_ORG=deep-research
 INFLUXDB_BUCKET=research
 INFLUXDB_TOKEN=influx-token
+```
+
+**Docker/AI/.env** (AI Stack)
+```env
+# Ollama Configuration
+OLLAMA_HOST=0.0.0.0:11434
+OLLAMA_MODELS_PATH=/root/.ollama/models
+
+# Qdrant Configuration
 QDRANT_API_KEY=default-key
+QDRANT_PREFER_GRPC=false
+
+# Lightning Configuration
+LIGHTNING_PORT=8090
+LIGHTNING_LOG_LEVEL=INFO
+```
+
+**Docker/Websearch/.env** (Websearch Stack)
+```env
+# SearXNG Configuration
+SEARXNG_HOSTNAME=localhost
+SEARXNG_BASE_URL=https://localhost/
+SEARXNG_SECRET_KEY=your-secret-key
+
+# Crawl4AI Configuration
 CRAWL4AI_PROFILES_PATH=./Docker/Websearch/crawl4ai_profiles
-JWT_SECRET_KEY=your-super-secret-key-minimum-32-chars
-LETSENCRYPT_EMAIL=admin@example.com
+CRAWL4AI_LOG_LEVEL=INFO
+CRAWL4AI_API_PORT=11235
+
+# Caddy Configuration
+CADDY_ADMIN=0.0.0.0:2019
 ```
 
-### Key Environment Variables
+**Docker/Observability/.env** (Monitoring Stack)
+```env
+# Prometheus Configuration
+PROMETHEUS_RETENTION=15d
+PROMETHEUS_SCRAPE_INTERVAL=15s
 
-**API Settings:**
-```
-ASPNETCORE_ENVIRONMENT=Production|Development
-ASPNETCORE_URLS=http://+:5000
-Swagger__Enabled=true
-HttpsRedirection__Enabled=false
-```
+# Grafana Configuration
+GF_SECURITY_ADMIN_USER=admin
+GF_SECURITY_ADMIN_PASSWORD=admin
+GF_USERS_ALLOW_SIGN_UP=false
+GF_LOG_LEVEL=info
 
-**Authentication:**
-```
-Jwt__SecretKey=your-secret-key-minimum-32-characters
-Jwt__Issuer=deepresearch-api
-Jwt__Audience=deepresearch-api
-Jwt__ExpirationMinutes=60
+# AlertManager Configuration
+ALERTMANAGER_PORT=9093
 ```
 
-## Directory Structure
+### Network Configuration
 
-```
-Docker/
-├── docker-compose.yml              # Main orchestration (deepresearch)
-├── docker-compose.api.yml          # API-only
-├── docker-compose.dev.yml          # Development
-├── docker-compose.prod.yml         # Production
-├── .env                            # Configuration
-│
-├── DeepResearch/                   # API and Agent
-│   └── Dockerfile                  # Multi-stage build
-│
-├── lightning-server/               # Agent orchestration
-│   ├── Dockerfile                  # Python runtime
-│   └── server.py                   # Application
-│
-├── Websearch/                      # Web search services
-│   ├── crawl4ai-service/
-│   ├── searxng/
-│   └── crawl4ai_profiles/
-│
-└── Observability/                  # Monitoring stack
-    ├── docker-compose-monitoring.yml
-    ├── prometheus.yml
-    ├── alerts.yml
-    ├── alertmanager-config.yml
-    ├── grafana-dashboard.json
-    ├── grafana-datasource.yml
-    └── otel-collector-config.yml
-
-data/                               # Persistent data (runtime)
-├── checkpoints/
-├── keys/
-└── logs/
-```
-
-## Dockerfiles
-
-### Docker/DeepResearch/Dockerfile
-
-Multi-stage build with:
-- **Stage 1 (builder)**: SDK image, restores/builds
-- **Stage 2 (publish)**: Publishes application
-- **Stage 3 (runtime)**: Minimal runtime image
-
-Build Context: Project root (..)  
-Target: .NET 8.0 ASP.NET Core
-
-### Docker/lightning-server/Dockerfile
-
-Python-based build with:
-- Node.js for dashboard
-- Python 3.11 for Lightning server
-- PyTorch with CUDA/CPU variants
-
-Build Context: Project root (..)
-
-## Common Commands
-
-### Start/Stop Services
-
+**Unified Network**: `deepresearch-hub` (bridge)
 ```bash
-# Start all
-docker-compose -f Docker/docker-compose.yml up -d
+# View network
+docker network inspect deepresearch-hub
 
-# Stop all
-docker-compose -f Docker/docker-compose.yml down
-
-# Restart service
-docker-compose -f Docker/docker-compose.yml restart [service]
-
-# View logs
-docker-compose -f Docker/docker-compose.yml logs -f [service]
-
-# Check status
-docker-compose -f Docker/docker-compose.yml ps
-```
-
-### Build Commands
-
-```bash
-# Build images
-docker-compose -f Docker/docker-compose.yml build
-
-# Build without cache
-docker-compose -f Docker/docker-compose.yml build --no-cache
-
-# Build specific service
-docker-compose -f Docker/docker-compose.yml build api
-```
-
-### Inspect
-
-```bash
-# View service logs
-docker-compose logs api
-
-# Execute command
-docker-compose exec api curl http://localhost:5000/health
-
-# Check stats
-docker stats
+# Service-to-Service Communication (DNS):
+# http://service-name:port
+# Examples:
+# - http://redis:6379        (from core)
+# - http://ollama:11434      (from core to AI)
+# - http://searxng:8080      (from core to websearch)
 ```
 
 ## Port Reference
 
-### DeepResearch Stack
-- 5000: API
-- 11434: Ollama
-- 11235: Crawl4AI
-- 8090: Lightning Server
-- 6379: Redis
-- 6333: Qdrant
-- 8086: InfluxDB
-- 8080: SearXNG
-- 80/443: Caddy
-- 9121: Redis-Exporter
+| Port | Service | Stack | Purpose |
+|------|---------|-------|---------|
+| **5000** | deepresearch-api | Core | REST API |
+| **6379** | redis | Core | Cache/Session Store |
+| **8086** | influxdb | Core | Time-Series DB |
+| **9121** | redis-exporter | Core | Prometheus Metrics |
+| **11434** | ollama | AI | LLM Inference |
+| **6333** | qdrant | AI | Vector Database |
+| **8090** | lightning-server | AI | Orchestration |
+| **8080** | searxng | Websearch | Meta Search |
+| **11235** | crawl4ai | Websearch | Web Scraper |
+| **80/443** | caddy | Websearch | Reverse Proxy |
+| **9090** | prometheus | Monitoring | Metrics DB |
+| **3001** | grafana | Monitoring | Dashboards |
+| **9093** | alertmanager | Monitoring | Alert Router |
+| **16686** | jaeger | Monitoring | Tracing UI |
+| **4317** | otel-collector | Monitoring | OTLP gRPC |
+| **4318** | otel-collector | Monitoring | OTLP HTTP |
+| **8889** | otel-collector | Monitoring | Prometheus Export |
+| **13133** | otel-collector | Monitoring | Health Check |
 
-### Monitoring Stack
-- 9090: Prometheus
-- 3001: Grafana
-- 9093: AlertManager
-- 16686: Jaeger
-- 5001: Monitoring API
-- 8081: Monitoring Service
+## Networking
 
-## Deployment Options
+### Network Architecture
 
-### Development
-
-```bash
-# Fast development (API only)
-docker-compose -f Docker/docker-compose.api.yml up -d
-
-# Full stack with hot reload
-docker-compose -f Docker/docker-compose.yml -f Docker/docker-compose.dev.yml up
+```
+┌──────────────────────────────────────────────┐
+│    Unified Bridge Network: deepresearch-hub  │
+├──────────────────────────────────────────────┤
+│                                              │
+│  ┌──────────────┐  ┌──────────────┐         │
+│  │ Core Stack   │  │ AI Stack     │         │
+│  │ (API, Redis) │◄─┤ (Ollama, Q)  │         │
+│  └──────┬───────┘  └──────┬───────┘         │
+│         │                 │                 │
+│         └─────────┬───────┘                 │
+│                   │                         │
+│         ┌─────────▼────────┐               │
+│         │ Websearch Stack  │               │
+│         │ (SearXNG, Caddy) │               │
+│         └──────────────────┘               │
+│                                            │
+│         ┌──────────────────┐               │
+│         │ Monitoring Stack │               │
+│         │ (Prometheus,GF)  │               │
+│         └──────────────────┘               │
+│                                            │
+└──────────────────────────────────────────────┘
 ```
 
-### Production
+### Cross-Stack Communication
+
+**All services accessible via DNS**:
+- API calls Ollama: `http://ollama:11434`
+- API calls SearXNG: `http://searxng:8080`
+- Prometheus scrapes Redis: `http://redis-exporter:9121`
+- Prometheus scrapes AI services: `http://ollama:11434`, `http://qdrant:6333`
+
+No IP address hardcoding needed - Docker DNS handles resolution
+
+## Common Operations
+
+### Deployment (New 4-Stack Approach)
+
+**Recommended**: Use automation scripts
+
+```powershell
+# PowerShell (Windows)
+cd Docker
+./deploy-stacks.ps1 -Action start  # Start all 4 stacks
+./deploy-stacks.ps1 -Action status # Check status
+./deploy-stacks.ps1 -Action health # Health check
+```
 
 ```bash
-# Production configuration
-docker-compose -f Docker/docker-compose.prod.yml up -d
+# Bash (Linux/Mac)
+cd Docker
+./deploy-stacks.sh start            # Start all 4 stacks
+./deploy-stacks.sh status           # Check status
+./deploy-stacks.sh health           # Health check
+```
 
-# With monitoring
-docker-compose -f Docker/docker-compose.prod.yml up -d
+### Manual Deployment
+
+```bash
+# 1. Create network (if not exists)
+docker network create deepresearch-hub --driver bridge
+
+# 2. Start stacks in order (dependencies first)
+docker-compose -f Docker/docker-compose.core.yml up -d
+docker-compose -f Docker/docker-compose.websearch.yml up -d
+docker-compose -f Docker/docker-compose.ai.yml up -d
 docker-compose -f Docker/Observability/docker-compose-monitoring.yml up -d
+
+# 3. Verify all services
+docker ps | grep deepresearch
+docker network inspect deepresearch-hub
+
+# 4. Check health
+curl http://localhost:5000/health
+curl http://localhost:9090/health
+curl http://localhost:3001/api/health
+```
+
+### Stack Management
+
+```bash
+# Start individual stack
+docker-compose -f Docker/docker-compose.core.yml up -d
+
+# Stop stack (data persists)
+docker-compose -f Docker/docker-compose.core.yml down
+
+# Stop and remove volumes (destructive)
+docker-compose -f Docker/docker-compose.core.yml down -v
+
+# View logs
+docker-compose -f Docker/docker-compose.core.yml logs -f [service-name]
+
+# Execute commands in container
+docker-compose -f Docker/docker-compose.core.yml exec redis redis-cli ping
 ```
 
 ## Troubleshooting
 
-### Services Won't Start
+### Quick Diagnosis
 
-```bash
-# Check logs
-docker-compose logs [service]
+```powershell
+# Check all containers
+docker ps
+docker ps -a  # Including stopped
 
-# Restart service
-docker-compose restart [service]
+# Check network
+docker network ls
+docker network inspect deepresearch-hub
 
-# Rebuild image
-docker-compose build --no-cache [service]
-docker-compose up -d [service]
+# Check volumes
+docker volume ls
+
+# Check system
+docker system df  # Disk usage
+docker stats      # CPU/Memory usage
 ```
 
-### Port Already in Use
+### Common Issues
 
-- Grafana conflict (3000): Changed to 3001
-- API conflict (5000): Monitoring API on 5001
-- Update ports in docker-compose.yml if needed
+#### Containers Won't Start
 
-### Health Checks Failing
+```bash
+# View error logs
+docker logs [container-name]
+docker-compose -f Docker/docker-compose.core.yml logs
 
-Some services show "unhealthy" but are functional:
-- Ollama, Qdrant, SearXNG: Health checks missing curl
-- Monitoring Service: Endpoints not yet implemented
+# Common causes and fixes:
+# 1. Port already in use
+netstat -ano | findstr :5000    # Windows
+lsof -i :5000                   # Linux
 
-Services work correctly despite health check status.
+# 2. Insufficient disk space
+docker system df
+docker system prune -a
 
-### Data Persistence
+# 3. Network issues
+docker network ls
+docker network create deepresearch-hub --driver bridge  # Recreate if missing
 
-Data stored in:
-- `Docker/data/checkpoints/`: Workflow state
-- `Docker/data/keys/`: Encryption keys
-- `Docker/logs/`: Application logs
-- Docker volumes for database services
+# 4. Out of memory
+docker stats
+# Check resource limits in compose files
+```
 
-## References
+#### Services Can't Communicate
 
-### Complete Documentation (BuildDocs/Docker/)
+```bash
+# Test DNS resolution
+docker-compose -f Docker/docker-compose.core.yml exec api \
+  nslookup ollama
 
-For comprehensive documentation, see:
+# Test connectivity
+docker-compose -f Docker/docker-compose.core.yml exec api \
+  curl http://ollama:11434/api/tags
 
-- **[DOCKER_COMPREHENSIVE_GUIDE.md](../../BuildDocs/Docker/DOCKER_COMPREHENSIVE_GUIDE.md)**
-  - Complete reference documentation (15,000+ words)
-  - Full deployment guides
-  - Advanced configuration
+# Check network attachment
+docker network inspect deepresearch-hub | grep -A 10 "Containers"
+```
 
-- **[DOCKER_INFRASTRUCTURE_INDEX.md](../../BuildDocs/Docker/DOCKER_INFRASTRUCTURE_INDEX.md)**
-  - Master index for navigation
-  - Quick access to all resources
-  - Project structure overview
+#### Monitoring Not Working
 
-- **[MONITORING_STACK_DEPLOYMENT_REPORT.md](../../BuildDocs/Docker/MONITORING_STACK_DEPLOYMENT_REPORT.md)**
-  - Monitoring stack configuration
-  - Service access points
-  - Monitoring troubleshooting
+```bash
+# Check Prometheus targets
+curl http://localhost:9090/api/v1/targets
 
-- **[DOCKER_VALIDATION_REPORT.md](../../BuildDocs/Docker/DOCKER_VALIDATION_REPORT.md)**
-  - Deployment validation
-  - Service health status
-  - Known issues
+# Check OTEL Collector
+curl http://localhost:13133
 
-- **[DOCUMENTATION_UPDATE_SUMMARY.md](../../BuildDocs/Docker/DOCUMENTATION_UPDATE_SUMMARY.md)**
-  - Summary of changes
-  - Path documentation
-  - Quick command reference
+# Check Redis Exporter reachability
+docker-compose -f Docker/Observability/docker-compose-monitoring.yml exec prometheus \
+  curl http://redis-exporter:9121/metrics
+```
 
-### Official Documentation
+#### GPU Not Detected
+
+```powershell
+# Verify GPU available
+nvidia-smi
+docker run --rm --gpus all nvidia/cuda:12.0-runtime nvidia-smi
+
+# Check Docker runtime
+docker info | grep nvidia
+
+# Check container GPU access
+docker-compose -f Docker/docker-compose.ai.yml exec ollama nvidia-smi
+```
+
+### Advanced Troubleshooting
+
+```bash
+# Inspect container configuration
+docker inspect [container-name] | jq '.[] | {Env, Mounts, NetworkSettings}'
+
+# Check container health status
+docker inspect [container-name] | jq '.[] | .State.Health'
+
+# Monitor container performance
+docker stats [container-name] --no-stream
+
+# Execute shell in container
+docker-compose exec [service-name] sh
+docker-compose exec ollama /bin/bash
+
+# Check service dependencies
+docker-compose config | grep "depends_on" -A 5
+```
+
+## Health Checks
+
+### Verify Service Health
+
+```bash
+# Use deployment script
+./deploy-stacks.ps1 -Action health
+
+# Manual checks:
+curl http://localhost:5000/health           # API
+docker-compose exec redis redis-cli ping    # Redis
+curl http://localhost:9090/health           # Prometheus
+curl http://localhost:3001/api/health       # Grafana
+curl http://localhost:11434/api/tags        # Ollama
+curl http://localhost:6333/health           # Qdrant
+curl http://localhost:13133                 # OTEL Collector
+```
+
+### Check Logs for Errors
+
+```bash
+# All stacks
+docker-compose -f Docker/docker-compose.core.yml logs | grep -i error
+docker-compose -f Docker/docker-compose.ai.yml logs | grep -i error
+docker-compose -f Docker/docker-compose.websearch.yml logs | grep -i error
+docker-compose -f Docker/Observability/docker-compose-monitoring.yml logs | grep -i error
+
+# Specific service
+docker-compose -f Docker/docker-compose.core.yml logs deepresearch-api | tail -50
+docker logs [container-name] --tail 100 --follow
+```
+
+## Data & Backup
+
+### Database Persistence
+
+**Volumes Created**:
+- redis-data: Redis cache
+- qdrant_storage: Vector database
+- influxdb-data: Time-series metrics
+- prometheus-data: Prometheus metrics
+- grafana-data: Grafana dashboards
+- ollama_data: LLM models
+
+**Check Volume Usage**:
+```bash
+docker volume ls
+docker system df -v | grep deepresearch
+```
+
+### Backup Procedure
+
+```bash
+# Backup volumes
+docker run --rm -v redis-data:/data -v /backups:/backups \
+  busybox tar czf /backups/redis-backup.tar.gz -C / data
+
+# Backup database
+docker-compose exec redis redis-cli BGSAVE
+docker cp deepresearch-redis:/data/dump.rdb ./redis-dump.rdb
+
+# Backup Qdrant
+docker cp deepresearch-qdrant:/qdrant/storage ./qdrant-backup
+```
+
+## Documentation & Resources
+
+### Official References
 - Docker: https://docs.docker.com/
 - Docker Compose: https://docs.docker.com/compose/
 - ASP.NET Core: https://learn.microsoft.com/en-us/aspnet/core/
-
-### Project Documentation
-- Complete Docker Guide: BuildDocs/Docker/DOCKER_COMPREHENSIVE_GUIDE.md
-- Observability Phase 3: Docker/Observability/Phase3_Observability_Implementation.md
-- Monitoring Plan: Docker/Observability/MONITORING_CONTAINER_SEPARATION_COMPLETE.md
+- Prometheus: https://prometheus.io/docs/
+- Grafana: https://grafana.com/docs/
 
 ---
 

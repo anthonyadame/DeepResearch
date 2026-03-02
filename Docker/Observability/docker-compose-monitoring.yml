@@ -1,58 +1,14 @@
-name: monitoring
+name: deepresearch-monitoring
 
 version: '3.8'
 
 services:
-  # Main DeepResearch API
-  deepresearch-api:
-    build:
-      context: ../../
-      dockerfile: Docker/DeepResearch/Dockerfile
-    container_name: monitoring-deepresearch-api
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - ASPNETCORE_URLS=http://+:5000
-      - CheckpointService__StorageBackend=file
-      - CheckpointService__LocalStorageDirectory=/app/data/checkpoints
-      - Authentication__JwtSecret=${JWT_SECRET}
-      - Monitoring__ServiceUrl=http://deepresearch-monitoring:8081
-      - Monitoring__Enabled=true
-    ports:
-      - "5001:5000"
-    volumes:
-      - deepresearch-data:/app/data
-    networks:
-      - monitoring
-    restart: unless-stopped
-    depends_on:
-      - deepresearch-monitoring
-    labels:
-      prometheus.io/scrape: "false"
-
-  # Monitoring Service Container
-  deepresearch-monitoring:
-    build:
-      context: ../../
-      dockerfile: DeepResearch.Monitoring/Dockerfile
-    container_name: deepresearch-monitoring
-    environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - ASPNETCORE_URLS=http://+:8081
-      - Prometheus__Enabled=true
-      - AlertManager__Url=http://alertmanager:9093
-      - OpenTelemetry__ExporterUrl=http://otel-collector:4318
-    ports:
-      - "8081:8081"
-    networks:
-      - monitoring
-    restart: unless-stopped
-    depends_on:
-      - prometheus
-      - alertmanager
-    labels:
-      prometheus.io/scrape: "true"
-      prometheus.io/port: "8081"
-      prometheus.io/path: "/metrics"
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # MONITORING STACK - Observability, Metrics, Tracing, Alerting
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # This stack provides comprehensive monitoring across all 4 stacks
+  # Scrapes metrics from Core, AI, and Websearch stacks via shared network
+  # ═══════════════════════════════════════════════════════════════════════════════
 
   # Prometheus for metrics collection
   prometheus:
@@ -71,8 +27,18 @@ services:
       - ./alerts.yml:/etc/prometheus/alerts.yml
       - prometheus-data:/prometheus
     networks:
-      - monitoring
+      - deepresearch-hub
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # AlertManager for alert routing
   alertmanager:
@@ -87,16 +53,26 @@ services:
       - ./alertmanager-config.yml:/etc/alertmanager/config.yml
       - alertmanager-data:/alertmanager
     networks:
-      - monitoring
+      - deepresearch-hub
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Grafana for visualization
   grafana:
     image: grafana/grafana:latest
     container_name: deepresearch-grafana
     environment:
-      - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_INSTALL_PLUGINS=grafana-piechart-panel
     ports:
@@ -106,12 +82,23 @@ services:
       - ./grafana-datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml
       - grafana-data:/var/lib/grafana
     networks:
-      - monitoring
+      - deepresearch-hub
     restart: unless-stopped
     depends_on:
-      - prometheus
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  # OpenTelemetry Collector (optional - disabled for now due to config issues)
+  # OpenTelemetry Collector
   otel-collector:
     image: otel/opentelemetry-collector:latest
     container_name: deepresearch-otel-collector
@@ -121,14 +108,23 @@ services:
     ports:
       - "4317:4317"   # OTLP gRPC receiver
       - "4318:4318"   # OTLP HTTP receiver
-      - "8888:8888"   # Prometheus metrics exposed by the collector
-      - "8889:8889"   # Prometheus exporter metrics
+      - "8889:8889"   # Prometheus metrics exporter (changed from 8888)
       - "13133:13133" # health_check extension
     networks:
-      - monitoring
+      - deepresearch-hub
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:13133"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  # Jaeger for distributed tracing (optional)
+  # Jaeger for distributed tracing
   jaeger:
     image: jaegertracing/all-in-one:latest
     container_name: deepresearch-jaeger
@@ -144,11 +140,22 @@ services:
       - "14250:14250"
       - "9411:9411"
     networks:
-      - monitoring
+      - deepresearch-hub
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:16686/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
-  monitoring:
+  deepresearch-hub:
+    external: true
     driver: bridge
 
 volumes:

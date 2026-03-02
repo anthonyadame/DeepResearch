@@ -1,0 +1,113 @@
+name: deepresearch-websearch
+
+version: '3.8'
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # WEBSEARCH STACK - Meta Search, Web Scraping, Reverse Proxy
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # This stack contains web discovery and scraping services
+  # Caddy serves as unified reverse proxy for all web traffic
+  # Can be scaled independently for web service capacity
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  # Caddy - Reverse proxy for web traffic (moved from core)
+  caddy:
+    container_name: research-caddy
+    image: docker.io/library/caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+    volumes:
+      - caddy-data:/data:rw
+      - caddy-config:/config:rw
+    environment:
+      - SEARXNG_HOSTNAME=${SEARXNG_HOSTNAME:-localhost}
+      - SEARXNG_TLS=${LETSENCRYPT_EMAIL:-internal}
+      - CADDY_LOG_LEVEL=${CADDY_LOG_LEVEL:-info}
+    networks:
+      - deepresearch-hub
+    healthcheck:
+      test: ["CMD", "caddy", "version"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command: caddy reverse-proxy --from :80 --to searxng:8080 --to crawl4ai:11235
+
+  # SearXNG - Meta search engine for web discovery
+  searxng:
+    container_name: research-searxng
+    image: searxng/searxng:latest
+    restart: unless-stopped
+    networks:
+      - deepresearch-hub
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./Websearch/searxng/settings.yml:/etc/searxng/settings.yml:ro
+      - searxng-data:/var/cache/searxng:rw
+    environment:
+      - SEARXNG_BASE_URL=https://${SEARXNG_HOSTNAME:-localhost}/
+      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:-your-secret-key-change-in-production}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Crawl4AI - Web scraping and content extraction service
+  # ⚠️ IMPORTANT: Update the volume path below to match your Windows username
+  # Replace <YourUser> with your actual Windows username (e.g., user, john.doe)
+  # Example: C:\Users\<user>\crawl4ai_profiles:/home/crawl4ai/profiles
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    container_name: research-crawl4ai
+    ports:
+      - "11235:11235"
+    environment:
+      API_PORT: 11235
+      LOG_LEVEL: ${CRAWL4AI_LOG_LEVEL:-INFO}
+    volumes:
+      # Mounts host profile directory to Docker container
+      # Override CRAWL4AI_PROFILES_PATH to point at a persistent profiles folder
+      - ${CRAWL4AI_PROFILES_PATH:-./Docker/Websearch/crawl4ai_profiles}:/home/crawl4ai/profiles
+    networks:
+      - deepresearch-hub
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11235/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    # Allocates shared memory for Chromium (required for headless browser)
+    shm_size: '2gb'
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  deepresearch-hub:
+    external: true
+    driver: bridge
+
+volumes:
+  caddy-data:
+    driver: local
+  caddy-config:
+    driver: local
+  searxng-data:
+    driver: local
