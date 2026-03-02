@@ -25,14 +25,16 @@
 #   monitoring - Monitoring stack (Prometheus, Grafana, etc)
 #
 # Options:
-#   -f, --follow   - Follow logs continuously
-#   -t, --tail N   - Show last N log lines (default: 50)
-#   -v, --verbose  - Verbose output
+#   -f, --follow           - Follow logs continuously
+#   -t, --tail N           - Show last N log lines (default: 50)
+#   -v, --verbose          - Verbose output
+#   -c, --create-missing   - Create placeholder docker-compose files if missing
 #
 # Examples:
 #   ./deploy-stacks.sh start all           # Start all stacks
 #   ./deploy-stacks.sh status core         # Show core stack status
 #   ./deploy-stacks.sh logs -f monitoring  # Follow monitoring logs
+#   ./deploy-stacks.sh start all -c        # Create missing files and start
 #
 # Author: DeepResearch Architecture Team
 # Version: 1.0
@@ -67,6 +69,33 @@ STACK="${2:-all}"
 FOLLOW=false
 TAIL=50
 VERBOSE=false
+CREATE_MISSING=false
+
+# Parse additional options
+shift 2 || true
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -f|--follow)
+            FOLLOW=true
+            shift
+            ;;
+        -t|--tail)
+            TAIL="$2"
+            shift 2
+            ;;
+        -v|--verbose)
+            VERBOSE=true
+            shift
+            ;;
+        -c|--create|--create-missing)
+            CREATE_MISSING=true
+            shift
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STACK DEFINITIONS
@@ -100,22 +129,22 @@ declare -A DEPENDENCIES=(
 write_status() {
     local message="$1"
     local type="${2:-info}"
-    
+
     case "$type" in
         success)
-            echo -e "${GREEN}✅ ${message}${NC}"
+            echo -e "${GREEN}[OK] ${message}${NC}"
             ;;
         error)
-            echo -e "${RED}❌ ${message}${NC}"
+            echo -e "${RED}[ERROR] ${message}${NC}"
             ;;
         warning)
-            echo -e "${YELLOW}⚠️  ${message}${NC}"
+            echo -e "${YELLOW}[WARN] ${message}${NC}"
             ;;
         info)
-            echo -e "${CYAN}ℹ️  ${message}${NC}"
+            echo -e "${CYAN}[INFO] ${message}${NC}"
             ;;
         header)
-            echo -e "${MAGENTA}═══ ${message}${NC}"
+            echo -e "${MAGENTA}== ${message}${NC}"
             ;;
     esac
 }
@@ -123,15 +152,139 @@ write_status() {
 write_header() {
     local title="$1"
     echo ""
-    echo -e "${MAGENTA}╔═══════════════════════════════════════════════════════════════╗${NC}"
-    printf "${MAGENTA}║ %-61s ║${NC}\n" "$title"
-    echo -e "${MAGENTA}╚═══════════════════════════════════════════════════════════════╝${NC}"
+    echo -e "${MAGENTA}+====================================================================+${NC}"
+    printf "${MAGENTA}| %-61s |${NC}\n" "$title"
+    echo -e "${MAGENTA}+====================================================================+${NC}"
     echo ""
 }
 
 test_network_exists() {
     docker network ls --filter "name=$NETWORK_NAME" --format "{{.Name}}" 2>/dev/null | grep -q "$NETWORK_NAME"
     return $?
+}
+
+test_compose_file_exists() {
+    local file_path="$1"
+    [ -f "$file_path" ]
+    return $?
+}
+
+test_all_compose_files_exist() {
+    local -a stacks_to_check
+
+    if [ "$STACK" = "all" ]; then
+        stacks_to_check=("core" "ai" "websearch" "monitoring")
+    else
+        stacks_to_check=("$STACK")
+    fi
+
+    local has_missing=0
+
+    for stack in "${stacks_to_check[@]}"; do
+        local compose_file=$(get_compose_file "$stack")
+        local full_path="$PROJECT_ROOT/$compose_file"
+
+        if ! test_compose_file_exists "$full_path"; then
+            echo "$stack|$compose_file|$full_path"
+            has_missing=1
+        fi
+    done
+
+    return $has_missing
+}
+
+show_missing_files_help() {
+    local has_missing=0
+
+    # Check if there are missing files
+    for stack in "${!STACKS[@]}"; do
+        local compose_file=$(get_compose_file "$stack")
+        local full_path="$PROJECT_ROOT/$compose_file"
+
+        if ! test_compose_file_exists "$full_path"; then
+            has_missing=1
+            break
+        fi
+    done
+
+    if [ $has_missing -eq 0 ]; then
+        return 0
+    fi
+
+    echo ""
+    echo -e "${YELLOW}+====================================================================+${NC}"
+    echo -e "${YELLOW}|                    MISSING DOCKER COMPOSE FILES                |${NC}"
+    echo -e "${YELLOW}+====================================================================+${NC}"
+    echo ""
+
+    for stack in "${!STACKS[@]}"; do
+        local compose_file=$(get_compose_file "$stack")
+        local full_path="$PROJECT_ROOT/$compose_file"
+
+        if ! test_compose_file_exists "$full_path"; then
+            write_status "Missing: $compose_file" "error"
+            echo -e "  ${CYAN}Path: $full_path${NC}"
+        fi
+    done
+
+    echo ""
+    echo -e "${YELLOW}[WARN]  The following docker-compose files are required but not found:${NC}"
+    echo ""
+    echo -e "${CYAN}  Option 1: Provide the missing docker-compose files in the Docker directory${NC}"
+    echo ""
+    echo -e "${CYAN}  Option 2: Create placeholder files with this script:${NC}"
+    echo -e "${GREEN}    ./deploy-stacks.sh start all --create-missing${NC}"
+    echo ""
+    echo -e "${CYAN}  Option 3: Generate files manually (examples available in Docker/examples/)${NC}"
+    echo ""
+}
+
+create_placeholder_file() {
+    local stack="$1"
+    local full_path="$2"
+    local dir=$(dirname "$full_path")
+
+    mkdir -p "$dir"
+
+    cat > "$full_path" << EOF
+version: '3.8'
+
+services:
+  # Placeholder for $stack stack
+  # TODO: Add service definitions
+
+networks:
+  deepresearch-hub:
+    external: true
+    driver: bridge
+EOF
+
+    write_status "Created placeholder: $(basename "$full_path")" "success"
+}
+
+start_interactive_file_creation() {
+    echo ""
+    echo -e "${CYAN}Would you like to create placeholder docker-compose files? (y/n)${NC}"
+    read -r response
+
+    if [ "$response" = "y" ] || [ "$response" = "yes" ]; then
+        # List of stacks to create files for
+        local stacks=("core" "ai" "websearch" "monitoring")
+
+        for stack in "${stacks[@]}"; do
+            local compose_file=$(get_compose_file "$stack")
+            local full_path="$PROJECT_ROOT/$compose_file"
+
+            create_placeholder_file "$stack" "$full_path"
+        done
+
+        echo ""
+        write_status "Placeholder files created. Please edit them with proper service definitions." "warning"
+        echo ""
+        return 0
+    fi
+
+    return 1
 }
 
 create_network() {
@@ -414,13 +567,42 @@ parse_arguments() {
     done
 }
 
+# Check if any compose files are missing
+check_missing_compose_files() {
+    for stack in "${!STACKS[@]}"; do
+        local compose_file=$(get_compose_file "$stack")
+        local full_path="$PROJECT_ROOT/$compose_file"
+
+        if ! test_compose_file_exists "$full_path"; then
+            return 1  # Has missing files
+        fi
+    done
+
+    return 0  # All files exist
+}
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAIN EXECUTION
 # ═══════════════════════════════════════════════════════════════════════════════
 
-parse_arguments "$@"
-
 write_header "DeepResearch Stack Manager v1.0"
+
+# Check for missing compose files
+if ! check_missing_compose_files; then
+    show_missing_files_help
+
+    if [ "$CREATE_MISSING" = true ]; then
+        if start_interactive_file_creation; then
+            write_status "Please edit the placeholder files and run the script again" "warning"
+            exit 0
+        fi
+    fi
+
+    write_status "Cannot proceed without docker-compose files" "error"
+    echo -e "  ${CYAN}Use --create-missing flag to create placeholder files:${NC}"
+    echo -e "  ${GREEN}./deploy-stacks.sh start all --create-missing${NC}"
+    exit 1
+fi
 
 stacks_to_process=$(get_stacks_to_process)
 

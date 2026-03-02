@@ -20,6 +20,9 @@
 .PARAMETER Tail
     Number of log lines to show (default: 50)
 
+.PARAMETER CreateMissing
+    Create placeholder docker-compose files if they don't exist
+
 .EXAMPLE
     .\deploy-stacks.ps1 -Action start -Stack all
     Starts all stacks in proper dependency order
@@ -32,6 +35,10 @@
     .\deploy-stacks.ps1 -Action logs -Stack core -Follow
     Follows logs from core stack services
 
+.EXAMPLE
+    .\deploy-stacks.ps1 -Action start -Stack all -CreateMissing
+    Creates placeholder docker-compose files if missing, then starts stacks
+
 .NOTES
     Author: DeepResearch Architecture Team
     Version: 1.0
@@ -42,19 +49,19 @@ param(
     [Parameter(Mandatory=$false)]
     [ValidateSet("start", "stop", "restart", "status", "logs", "health", "validate", "cleanup")]
     [string]$Action = "status",
-    
+
     [Parameter(Mandatory=$false)]
     [ValidateSet("all", "core", "ai", "websearch", "monitoring")]
     [string]$Stack = "all",
-    
+
     [Parameter(Mandatory=$false)]
     [switch]$Follow,
-    
+
     [Parameter(Mandatory=$false)]
     [int]$Tail = 50,
-    
+
     [Parameter(Mandatory=$false)]
-    [switch]$Verbose
+    [switch]$CreateMissing
 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -117,32 +124,128 @@ function Write-Status {
         [string]$Message,
         [string]$Type = "Info"
     )
-    
+
     $color = $Colors[$Type]
     $prefix = switch($Type) {
-        "Success" { "✅" }
-        "Error" { "❌" }
-        "Warning" { "⚠️" }
-        "Info" { "ℹ️" }
-        "Header" { "═══" }
-        default { "•" }
+        "Success" { "[OK]" }
+        "Error" { "[ERROR]" }
+        "Warning" { "[WARN]" }
+        "Info" { "[INFO]" }
+        "Header" { "==" }
+        default { "*" }
     }
-    
+
     Write-Host "$prefix $Message" -ForegroundColor $color
 }
 
 function Write-Header {
     param([string]$Title)
     Write-Host ""
-    Write-Host "╔═════════════════════════════════════════════════════════════════╗" -ForegroundColor Magenta
-    Write-Host "║ $($Title.PadRight(63)) ║" -ForegroundColor Magenta
-    Write-Host "╚═════════════════════════════════════════════════════════════════╝" -ForegroundColor Magenta
+    Write-Host "+====================================================================+" -ForegroundColor Magenta
+    Write-Host "| $($Title.PadRight(63)) |" -ForegroundColor Magenta
+    Write-Host "+====================================================================+" -ForegroundColor Magenta
     Write-Host ""
+}
+
+function Test-ComposeFileExists {
+    param([string]$FilePath)
+    return Test-Path -Path $FilePath -PathType Leaf
+}
+
+function Test-AllComposeFilesExist {
+    param([string[]]$StackFilter)
+
+    $stacksToCheck = if ($StackFilter -contains "all") { @("core", "ai", "websearch", "monitoring") } else { $StackFilter }
+    $missingFiles = @()
+
+    foreach ($stackName in $stacksToCheck) {
+        $stack = $Stacks[$stackName]
+        $filePath = Join-Path -Path $ProjectRoot -ChildPath $stack.compose_file
+
+        if (-not (Test-ComposeFileExists -FilePath $filePath)) {
+            $missingFiles += @{
+                Stack = $stackName
+                File = $stack.compose_file
+                FullPath = $filePath
+            }
+        }
+    }
+
+    return $missingFiles
 }
 
 function Test-NetworkExists {
     $network = docker network ls --filter "name=$NetworkName" --format "{{.Name}}" 2>$null
     return $network -eq $NetworkName
+}
+
+function Show-MissingFilesHelp {
+    param([array]$MissingFiles)
+
+    Write-Host ""
+    Write-Host "+====================================================================+" -ForegroundColor Yellow
+    Write-Host "|                    MISSING DOCKER COMPOSE FILES                |" -ForegroundColor Yellow
+    Write-Host "+====================================================================+" -ForegroundColor Yellow
+    Write-Host ""
+
+    foreach ($missing in $MissingFiles) {
+        Write-Status "Missing: $($missing.File)" "Error"
+        Write-Host "  Path: $($missing.FullPath)" -ForegroundColor DarkGray
+    }
+
+    Write-Host ""
+    Write-Host "[WARN]  The following docker-compose files are required but not found:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Option 1: Provide the missing docker-compose files in the Docker directory" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Option 2: Create placeholder files with this script:" -ForegroundColor Cyan
+    Write-Host "    ./deploy-stacks.ps1 -Action start -CreateMissing" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  Option 3: Generate files manually (examples available in Docker/examples/)" -ForegroundColor Cyan
+    Write-Host ""
+}
+
+function Start-InteractiveFileCreation {
+    param([array]$MissingFiles)
+
+    Write-Host ""
+    Write-Host "Would you like to create placeholder docker-compose files? (y/n)" -ForegroundColor Cyan
+    $response = Read-Host
+
+    if ($response -eq "y" -or $response -eq "yes") {
+        foreach ($missing in $MissingFiles) {
+            $dir = Split-Path -Path $missing.FullPath
+
+            if (-not (Test-Path -Path $dir -PathType Container)) {
+                New-Item -ItemType Directory -Path $dir -Force | Out-Null
+                Write-Status "Created directory: $dir" "Info"
+            }
+
+            # Create a basic placeholder compose file
+            $content = @"
+version: '3.8'
+
+services:
+  # Placeholder for $($missing.Stack) stack
+  # TODO: Add service definitions
+
+networks:
+  deepresearch-hub:
+    external: true
+    driver: bridge
+"@
+
+            Set-Content -Path $missing.FullPath -Value $content
+            Write-Status "Created placeholder: $($missing.File)" "Success"
+        }
+
+        Write-Host ""
+        Write-Status "Placeholder files created. Please edit them with proper service definitions." "Warning"
+        Write-Host ""
+        return $true
+    }
+
+    return $false
 }
 
 function Create-Network {
@@ -423,6 +526,24 @@ function Cleanup-Stack {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 Write-Header "DeepResearch Stack Manager v1.0"
+
+# Check for missing compose files
+$missingFiles = Test-AllComposeFilesExist -StackFilter @($Stack)
+if ($missingFiles.Count -gt 0) {
+    Show-MissingFilesHelp -MissingFiles $missingFiles
+
+    if ($CreateMissing) {
+        if (Start-InteractiveFileCreation -MissingFiles $missingFiles) {
+            Write-Status "Please edit the placeholder files and run the script again" "Warning"
+            exit 0
+        }
+    }
+
+    Write-Status "Cannot proceed without docker-compose files" "Error"
+    Write-Host "  Use -CreateMissing flag to create placeholder files:" -ForegroundColor Cyan
+    Write-Host "  ./deploy-stacks.ps1 -Action start -Stack all -CreateMissing" -ForegroundColor Green
+    exit 1
+}
 
 $stacksToProcess = Get-StacksToProcess $Stack
 

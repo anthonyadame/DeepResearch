@@ -17,6 +17,9 @@ cd Docker
 # Start all 4 stacks (creates network automatically)
 ./deploy-stacks.ps1 -Action start
 
+# Start with automatic file creation if missing
+./deploy-stacks.ps1 -Action start -CreateMissing
+
 # Check status
 ./deploy-stacks.ps1 -Action status
 
@@ -25,9 +28,7 @@ cd Docker
 
 # View logs
 ./deploy-stacks.ps1 -Action logs -Stack core
-./deploy-stacks.ps1 -Action logs -Stack ai
-./deploy-stacks.ps1 -Action logs -Stack websearch
-./deploy-stacks.ps1 -Action logs -Stack monitoring
+./deploy-stacks.ps1 -Action logs -Stack ai -Follow
 
 # Stop all stacks
 ./deploy-stacks.ps1 -Action stop
@@ -75,8 +76,46 @@ docker-compose -f Docker/docker-compose.websearch.yml up -d
 docker-compose -f Docker/docker-compose.ai.yml up -d
 docker-compose -f Docker/Observability/docker-compose-monitoring.yml up -d
 
+docker-compose -f Docker/Observability/docker-compose-monitoring.yml up -d
+
 # Verify all services
 docker ps | grep deepresearch
+```
+
+## Script Parameters & Options
+
+### PowerShell Script (`deploy-stacks.ps1`)
+
+**Parameters:**
+- `-Action`: Operation to perform (start, stop, restart, status, logs, health, validate, cleanup)
+- `-Stack`: Which stack(s) to target (all, core, ai, websearch, monitoring)  
+- `-Follow`: For logs action, continuously follow logs
+- `-Tail`: Number of log lines to show (default: 50)
+- `-CreateMissing`: Create placeholder docker-compose files if they don't exist
+
+**Examples:**
+```powershell
+./deploy-stacks.ps1 -Action start -Stack all
+./deploy-stacks.ps1 -Action status -Stack core
+./deploy-stacks.ps1 -Action logs -Stack ai -Follow -Tail 100
+./deploy-stacks.ps1 -Action start -CreateMissing  # Creates missing compose files interactively
+./deploy-stacks.ps1 -Action health              # Check health of all stacks
+```
+
+### Bash Script (`deploy-stacks.sh`)
+
+**Note**: Bash script may have compatibility issues on WSL2. Recommended to use PowerShell script on Windows.
+
+**Usage:**
+```bash
+./deploy-stacks.sh [ACTION] [STACK] [OPTIONS]
+```
+
+**Examples:**
+```bash
+./deploy-stacks.sh start all           # Start all stacks
+./deploy-stacks.sh status core         # Show core stack status
+./deploy-stacks.sh logs ai -f          # Follow AI stack logs
 ```
 
 ## Access Points
