@@ -139,6 +139,33 @@ var config = new ResearchConfig
 };
 ```
 
+### Dependency Injection Configuration (NEW)
+
+All services are automatically configured in `ServiceProviderConfiguration.cs`:
+
+```csharp
+// Checkpoint and workflow pause/resume services
+services.AddCheckpointService(options =>
+{
+    options.LocalStorageDirectory = Path.Combine(AppContext.BaseDirectory, "checkpoints");
+    options.CompressSnapshots = true;
+    options.EnableAutoCheckpoints = true;
+});
+
+// Workflow orchestration services
+var masterWorkflow = serviceProvider.GetRequiredService<IMasterWorkflowService>();
+var researcherWorkflow = serviceProvider.GetRequiredService<IResearcherWorkflowService>();
+
+// Performance monitoring
+var analytics = serviceProvider.GetRequiredService<PerformanceAnalyticsService>();
+
+// Semantic search integration
+var semanticSearch = serviceProvider.GetRequiredService<SemanticSearchService>();
+
+// State management
+var stateAccumulator = serviceProvider.GetRequiredService<IStateAccumulatorService>();
+```
+
 ## Project Structure
 
 ```
@@ -149,22 +176,42 @@ DeepResearchAgent/
 │   ├── CritiqueState.cs
 │   ├── SearchResult.cs
 │   ├── ScrapedContent.cs
+│   ├── WorkflowCheckpoint.cs
 │   └── ...
-├── Workflows/           # Workflow executors (planned)
+├── Workflows/           # Workflow executors
 │   ├── MasterWorkflow.cs
 │   ├── SupervisorWorkflow.cs
 │   └── ResearcherWorkflow.cs
-├── Tools/               # Agent tools
-│   └── ResearchTools.cs
-├── Services/            # External integrations
+├── Services/            # External integrations & utilities
+│   ├── Checkpointing/
+│   │   ├── ICheckpointService.cs
+│   │   └── CheckpointService.cs
+│   ├── Workflows/       # NEW: Advanced workflow services
+│   │   ├── IMasterWorkflowService.cs
+│   │   ├── MasterWorkflowService.cs
+│   │   ├── IResearcherWorkflowService.cs
+│   │   ├── ResearcherWorkflowService.cs
+│   │   ├── PerformanceAnalyticsService.cs
+│   │   ├── SemanticSearchService.cs
+│   │   └── StateAccumulatorService.cs
 │   ├── OllamaService.cs
 │   ├── SearCrawl4AIService.cs
 │   ├── SearCrawl4AIConfig.cs
-│   └── LightningStore.cs
+│   ├── LightningStore.cs
+│   ├── WorkflowPauseResumeService.cs
+│   └── ...
+├── Agents/              # NEW: Agent adapters
+│   └── Adapters/
+│       ├── AnalystAgentAdapter.cs
+│       ├── DraftReportAgentAdapter.cs
+│       └── ReportAgentAdapter.cs
+├── Tools/               # Agent tools
+│   └── ResearchTools.cs
 ├── Prompts/             # LLM prompts
 │   └── PromptTemplates.cs
-├── Config/              # DI setup
-│   └── ServiceConfiguration.cs
+├── Configuration/       # DI setup
+│   ├── ServiceProviderConfiguration.cs
+│   └── CheckpointingExtensions.cs
 └── Program.cs           # Entry point
 ```
 
@@ -201,7 +248,20 @@ DeepResearchAgent/
 - Master/Supervisor/Researcher workflows expose streaming methods for real-time progress updates
 - `Program.cs` demo streams live updates from the master workflow
 
-## Usage Example
+### 7. Checkpoint & Pause/Resume Support (NEW)
+- **CheckpointService**: Saves workflow state snapshots at agent boundaries for resilience
+- **WorkflowPauseResumeService**: Safely pauses active workflows and resumes from checkpoints
+- **StateAccumulatorService**: Accumulates and merges state across workflow execution
+- Full integration with DI container for seamless service access
+
+### 8. Performance Analytics & Semantic Search (NEW)
+- **PerformanceAnalyticsService**: Monitors workflow execution metrics and performance
+- **SemanticSearchService**: Provides semantic search over accumulated research findings
+- Optional vector database integration for advanced similarity queries
+
+## Usage Examples
+
+### Basic Research Workflow
 
 ```csharp
 var agent = new DeepResearchAgent(ollamaService, config);
@@ -235,6 +295,72 @@ await store.SaveFactAsync(new FactState
     SourceUrl = "https://example.com/transformers",
     ConfidenceScore = 90
 });
+```
+
+### Checkpoint & Pause/Resume (NEW)
+
+```csharp
+// Access services from DI container
+var checkpointService = serviceProvider.GetRequiredService<ICheckpointService>();
+var pauseResumeService = serviceProvider.GetRequiredService<IWorkflowPauseResumeService>();
+var stateAccumulator = serviceProvider.GetRequiredService<IStateAccumulatorService>();
+
+// Start a workflow
+var workflow = new WorkflowDefinition { Name = "Research Workflow" };
+var execution = await masterWorkflowService.ExecuteWorkflowAsync(workflow);
+
+// Pause workflow at safe point
+await pauseResumeService.RequestPauseAsync(execution.ExecutionId);
+
+// Get latest checkpoint for resumption
+var checkpoints = await checkpointService.GetCheckpointsForWorkflowAsync(
+    execution.ExecutionId);
+var lastCheckpoint = checkpoints.LastOrDefault();
+
+// Resume from checkpoint in new session
+var resumedExecution = await masterWorkflowService.ResumeWorkflowAsync(
+    execution.ExecutionId, 
+    lastCheckpoint);
+```
+
+### Performance Analytics (NEW)
+
+```csharp
+var analyticsService = serviceProvider.GetRequiredService<PerformanceAnalyticsService>();
+
+// Track workflow execution metrics
+analyticsService.RecordWorkflowStart("research-workflow-123");
+// ... execution happens ...
+analyticsService.RecordWorkflowEnd("research-workflow-123");
+
+// Get performance metrics
+var metrics = analyticsService.GetMetrics("research-workflow-123");
+Console.WriteLine($"Execution time: {metrics.TotalExecutionTime}");
+Console.WriteLine($"Average step time: {metrics.AverageStepDuration}");
+```
+
+### Semantic Search (NEW)
+
+```csharp
+var semanticSearch = serviceProvider.GetRequiredService<SemanticSearchService>();
+
+// Search accumulated research findings
+var findings = new List<string>
+{
+    "AI agents can process natural language",
+    "Transformers use self-attention mechanisms",
+    "Neural networks learn through backpropagation"
+};
+
+// Find semantically similar findings
+var results = await semanticSearch.SearchAsync(
+    "How do AI models learn patterns?",
+    findings);
+
+foreach (var result in results)
+{
+    Console.WriteLine($"Match: {result.Content} (similarity: {result.Similarity:P})");
+}
 ```
 
 ## Development Notes

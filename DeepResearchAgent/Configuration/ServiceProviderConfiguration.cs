@@ -267,6 +267,21 @@ public static class ServiceProviderConfiguration
         services.AddSingleton<StateManager>();
         services.AddSingleton<WorkflowModelConfiguration>();
 
+        // Register checkpoint and workflow pause/resume services
+        services.AddCheckpointService(options =>
+        {
+            options.LocalStorageDirectory = Path.Combine(AppContext.BaseDirectory, "checkpoints");
+            options.CompressSnapshots = true;
+            options.EnableAutoCheckpoints = true;
+            options.MaxCheckpointsPerWorkflow = 10;
+            options.CheckpointAfterEachAgent = true;
+        });
+
+        services.AddSingleton<IWorkflowPauseResumeService>(sp => new WorkflowPauseResumeService(
+            sp.GetRequiredService<ICheckpointService>(),
+            sp.GetService<ILogger<WorkflowPauseResumeService>>()
+        ));
+
         // Register new utility services
         services.AddSingleton<PerformanceAnalyticsService>(sp => new PerformanceAnalyticsService(
             sp.GetService<ILogger<PerformanceAnalyticsService>>()
@@ -278,9 +293,37 @@ public static class ServiceProviderConfiguration
             sp.GetService<ILogger<SemanticSearchService>>()
         ));
 
-        // Note: StateAccumulatorService, ResearcherWorkflowService, and MasterWorkflowService
-        // have dependencies on ICheckpointService and other services that need to be registered
-        // in the future as checkpoint infrastructure is fully integrated
+        // Register agent pipeline service (required by MasterWorkflowService)
+        services.AddSingleton<AgentPipelineService>(sp => new AgentPipelineService(
+            sp.GetRequiredService<OllamaService>(),
+            new ToolInvocationService(
+                sp.GetRequiredService<IWebSearchProvider>(),
+                sp.GetRequiredService<OllamaService>()
+            ),
+            sp.GetService<ILogger<AgentPipelineService>>(),
+            sp.GetService<ICheckpointService>()
+        ));
+
+        // Register workflow state management service
+        services.AddSingleton<IStateAccumulatorService>(sp => new StateAccumulatorService(
+            sp.GetRequiredService<ICheckpointService>(),
+            sp.GetService<ILogger<StateAccumulatorService>>()
+        ));
+
+        // Register master workflow service
+        services.AddSingleton<IMasterWorkflowService>(sp => new MasterWorkflowService(
+            sp.GetRequiredService<ICheckpointService>(),
+            sp.GetRequiredService<IWorkflowPauseResumeService>(),
+            sp.GetRequiredService<AgentPipelineService>(),
+            sp.GetService<ILogger<MasterWorkflowService>>()
+        ));
+
+        // Register researcher workflow service
+        services.AddSingleton<IResearcherWorkflowService>(sp => new ResearcherWorkflowService(
+            sp.GetRequiredService<IMasterWorkflowService>(),
+            sp.GetRequiredService<ILightningVERLService>(),
+            sp.GetService<ILogger<ResearcherWorkflowService>>()
+        ));
 
         // Register agent adapters
         services.AddSingleton<AnalystAgentAdapter>(sp => new AnalystAgentAdapter(
