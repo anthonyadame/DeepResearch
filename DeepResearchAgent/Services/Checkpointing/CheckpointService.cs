@@ -185,11 +185,34 @@ public class CheckpointService : ICheckpointService
 
         var checkpoints = new List<WorkflowCheckpoint>();
 
-        // Try file storage (primary for now)
+        // Try LightningStore first (primary)
+        if (_options.StorageBackend != "file")
+        {
+            try
+            {
+                var lightningCheckpoints = await GetCheckpointsFromLightningStoreAsync(workflowId, ct);
+                checkpoints.AddRange(lightningCheckpoints);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to retrieve checkpoints from LightningStore for workflow {WorkflowId}", workflowId);
+            }
+        }
+
+        // Always try file storage as fallback
         try
         {
             var fileCheckpoints = await GetCheckpointsFromFileSystemAsync(workflowId, ct);
-            checkpoints.AddRange(fileCheckpoints);
+
+            // Add file checkpoints that aren't already in the list (deduplicate by ID)
+            var existingIds = new HashSet<string>(checkpoints.Select(c => c.CheckpointId));
+            foreach (var fileCheckpoint in fileCheckpoints)
+            {
+                if (!existingIds.Contains(fileCheckpoint.CheckpointId))
+                {
+                    checkpoints.Add(fileCheckpoint);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -369,9 +392,44 @@ public class CheckpointService : ICheckpointService
 
     private async Task SaveToLightningStoreAsync(WorkflowCheckpoint checkpoint, CancellationToken ct)
     {
-        // TODO: Implement LightningStore integration
-        // For now, this is a placeholder
-        await Task.CompletedTask;
+        try
+        {
+            // Serialize checkpoint to JSON
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = false,
+                DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+            };
+
+            var checkpointJson = JsonSerializer.Serialize(checkpoint, options);
+
+            // Create resource with checkpoint-namespaced key
+            // Format: checkpoints:{workflowId}:{checkpointId}
+            var resourceKey = $"checkpoints:{checkpoint.WorkflowId}:{checkpoint.CheckpointId}";
+            var resources = new Dictionary<string, string>
+            {
+                { resourceKey, checkpointJson }
+            };
+
+            // Persist to LightningStore
+            await _lightningStore.AddResourcesAsync(resources, ct);
+
+            _logger.LogInformation(
+                "Checkpoint persisted to LightningStore: {CheckpointId} for workflow {WorkflowId}",
+                checkpoint.CheckpointId,
+                checkpoint.WorkflowId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to save checkpoint to LightningStore; checkpoint will be saved to file storage instead. WorkflowId={WorkflowId}, CheckpointId={CheckpointId}",
+                checkpoint.WorkflowId,
+                checkpoint.CheckpointId);
+
+            // Re-throw to allow caller to implement fallback strategy
+            throw;
+        }
     }
 
     private async Task SaveToFileSystemAsync(WorkflowCheckpoint checkpoint, CancellationToken ct)
@@ -390,8 +448,51 @@ public class CheckpointService : ICheckpointService
 
     private async Task<WorkflowCheckpoint?> LoadFromLightningStoreAsync(string checkpointId, CancellationToken ct)
     {
-        // TODO: Implement LightningStore integration
-        return await Task.FromResult<WorkflowCheckpoint?>(null);
+        try
+        {
+            // Get latest resources from LightningStore
+            var resourcesUpdate = await _lightningStore.GetLatestResourcesAsync(ct);
+
+            if (resourcesUpdate?.Resources == null || resourcesUpdate.Resources.Count == 0)
+            {
+                _logger.LogInformation("No resources found in LightningStore for checkpoint: {CheckpointId}", checkpointId);
+                return null;
+            }
+
+            // Search for checkpoint with matching checkpointId
+            // Key format: checkpoints:{workflowId}:{checkpointId}
+            var checkpointKey = resourcesUpdate.Resources.Keys
+                .FirstOrDefault(k => k.EndsWith($":{checkpointId}") && k.StartsWith("checkpoints:"));
+
+            if (checkpointKey == null)
+            {
+                _logger.LogInformation("Checkpoint not found in LightningStore: {CheckpointId}", checkpointId);
+                return null;
+            }
+
+            // Deserialize checkpoint from resource value
+            var checkpointJson = resourcesUpdate.Resources[checkpointKey];
+            var checkpoint = JsonSerializer.Deserialize<WorkflowCheckpoint>(checkpointJson);
+
+            if (checkpoint == null)
+            {
+                _logger.LogWarning("Failed to deserialize checkpoint from LightningStore: {CheckpointId}", checkpointId);
+                return null;
+            }
+
+            _logger.LogInformation("Checkpoint loaded from LightningStore: {CheckpointId}", checkpointId);
+            return checkpoint;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to load checkpoint from LightningStore: {CheckpointId}. Will attempt file-based retrieval.",
+                checkpointId);
+
+            // Don't throw - allow fallback to file storage
+            return null;
+        }
     }
 
     private async Task<WorkflowCheckpoint?> LoadFromFileSystemAsync(string checkpointId, CancellationToken ct)
@@ -405,6 +506,77 @@ public class CheckpointService : ICheckpointService
         var checkpoint = JsonSerializer.Deserialize<WorkflowCheckpoint>(json);
 
         return checkpoint;
+    }
+
+    private async Task<IReadOnlyList<WorkflowCheckpoint>> GetCheckpointsFromLightningStoreAsync(
+        string workflowId,
+        CancellationToken ct)
+    {
+        var checkpoints = new List<WorkflowCheckpoint>();
+
+        try
+        {
+            // Get latest resources from LightningStore
+            var resourcesUpdate = await _lightningStore.GetLatestResourcesAsync(ct);
+
+            if (resourcesUpdate?.Resources == null || resourcesUpdate.Resources.Count == 0)
+            {
+                _logger.LogInformation("No resources found in LightningStore for workflow: {WorkflowId}", workflowId);
+                return checkpoints.AsReadOnly();
+            }
+
+            // Filter resources that match checkpoint pattern for this workflow
+            // Key format: checkpoints:{workflowId}:{checkpointId}
+            var prefix = $"checkpoints:{workflowId}:";
+            var workflowCheckpointKeys = resourcesUpdate.Resources.Keys
+                .Where(k => k.StartsWith(prefix))
+                .ToList();
+
+            if (workflowCheckpointKeys.Count == 0)
+            {
+                _logger.LogInformation("No checkpoints found in LightningStore for workflow: {WorkflowId}", workflowId);
+                return checkpoints.AsReadOnly();
+            }
+
+            // Deserialize each checkpoint
+            foreach (var key in workflowCheckpointKeys)
+            {
+                try
+                {
+                    var checkpointJson = resourcesUpdate.Resources[key];
+                    var checkpoint = JsonSerializer.Deserialize<WorkflowCheckpoint>(checkpointJson);
+
+                    if (checkpoint != null)
+                    {
+                        checkpoints.Add(checkpoint);
+                    }
+                }
+                catch (JsonException ex)
+                {
+                    _logger.LogWarning(
+                        ex,
+                        "Failed to deserialize checkpoint from LightningStore. Key: {ResourceKey}",
+                        key);
+                }
+            }
+
+            _logger.LogInformation(
+                "Retrieved {Count} checkpoints from LightningStore for workflow {WorkflowId}",
+                checkpoints.Count,
+                workflowId);
+
+            return checkpoints.AsReadOnly();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Failed to retrieve checkpoints from LightningStore for workflow {WorkflowId}",
+                workflowId);
+
+            // Return empty list on error - allow fallback to file storage
+            return checkpoints.AsReadOnly();
+        }
     }
 
     private async Task<IReadOnlyList<WorkflowCheckpoint>> GetCheckpointsFromFileSystemAsync(
