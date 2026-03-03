@@ -37,6 +37,24 @@ The Deep Research Agent implements a **diffusion-based research refinement loop*
 - **ResearcherWorkflow** - Conducts focused research on specific topics
 - **SearCrawl4AIService** - Handles web search and content scraping
 
+### Workflow Services (NEW)
+
+New service layer for enhanced workflow capabilities:
+
+- **MasterWorkflowService** - Advanced orchestration of multi-agent workflows with checkpoint support
+- **ResearcherWorkflowService** - Intelligent research loop management with VERL integration
+- **PerformanceAnalyticsService** - Tracks metrics and optimization recommendations
+- **SemanticSearchService** - Vector-based semantic search across research findings
+- **StateAccumulatorService** - Manages workflow state accumulation and diffusion
+
+### Agent Adapters (NEW)
+
+Framework-compatible adapters for agent integration:
+
+- **AnalystAgentAdapter** - Wraps AnalystAgent for AIAgentBuilder integration
+- **DraftReportAgentAdapter** - Wraps DraftReportAgent for report generation
+- **ReportAgentAdapter** - Wraps ReportAgent for final report finalization
+
 ### State Management
 
 - **LightningStateService** - High-performance state caching and persistence
@@ -123,6 +141,48 @@ var master = provider.GetRequiredService<MasterWorkflow>();
 string query = "Latest developments in quantum computing";
 string result = await master.RunAsync(query);
 Console.WriteLine(result);
+```
+
+### Using Workflow Services & Adapters (NEW)
+
+The new workflow services provide enhanced capabilities for performance monitoring and agent adaptation:
+
+#### Performance Analytics
+
+```csharp
+var analytics = provider.GetRequiredService<PerformanceAnalyticsService>();
+
+// Record workflow metrics
+var metrics = new WorkflowMetrics
+{
+    WorkflowId = "research-001",
+    TotalExecutionTime = TimeSpan.FromMinutes(5),
+    QualityScore = 0.95,
+    IterationCount = 3,
+    ApiCallCount = 12
+};
+
+await analytics.RecordWorkflowMetricsAsync("research-001", metrics);
+```
+
+#### Semantic Search
+
+```csharp
+var semanticSearch = provider.GetRequiredService<SemanticSearchService>();
+
+// Search research findings semantically
+var results = await semanticSearch.SearchAsync(
+    query: "quantum computing applications",
+    topK: 10);
+```
+
+#### Agent Adapters
+
+```csharp
+// Access agent adapters for framework integration
+var analystAdapter = provider.GetRequiredService<AnalystAgentAdapter>();
+var draftAdapter = provider.GetRequiredService<DraftReportAgentAdapter>();
+var reportAdapter = provider.GetRequiredService<ReportAgentAdapter>();
 ```
 
 ## 📊 Key Features

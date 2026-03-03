@@ -1,9 +1,12 @@
 using DeepResearchAgent.Agents;
+using DeepResearchAgent.Agents.Adapters;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.Checkpointing;
 using DeepResearchAgent.Services.StateManagement;
 using DeepResearchAgent.Services.VectorDatabase;
 using DeepResearchAgent.Services.WebSearch;
+using DeepResearchAgent.Services.Workflows;
 using DeepResearchAgent.Workflows;
 using DeepResearchAgent.Workflows.Extensions;
 using Microsoft.Extensions.AI;
@@ -263,6 +266,45 @@ public static class ServiceProviderConfiguration
     {
         services.AddSingleton<StateManager>();
         services.AddSingleton<WorkflowModelConfiguration>();
+
+        // Register new utility services
+        services.AddSingleton<PerformanceAnalyticsService>(sp => new PerformanceAnalyticsService(
+            sp.GetService<ILogger<PerformanceAnalyticsService>>()
+        ));
+
+        services.AddSingleton<SemanticSearchService>(sp => new SemanticSearchService(
+            sp.GetService<IVectorDatabaseService>(),
+            sp.GetService<IEmbeddingService>(),
+            sp.GetService<ILogger<SemanticSearchService>>()
+        ));
+
+        // Note: StateAccumulatorService, ResearcherWorkflowService, and MasterWorkflowService
+        // have dependencies on ICheckpointService and other services that need to be registered
+        // in the future as checkpoint infrastructure is fully integrated
+
+        // Register agent adapters
+        services.AddSingleton<AnalystAgentAdapter>(sp => new AnalystAgentAdapter(
+            sp.GetRequiredService<OllamaService>(),
+            new ToolInvocationService(
+                sp.GetRequiredService<IWebSearchProvider>(),
+                sp.GetRequiredService<OllamaService>()
+            ),
+            sp.GetService<ILogger<AnalystAgent>>()
+        ));
+
+        services.AddSingleton<DraftReportAgentAdapter>(sp => new DraftReportAgentAdapter(
+            sp.GetRequiredService<OllamaService>(),
+            sp.GetService<ILogger<DraftReportAgent>>()
+        ));
+
+        services.AddSingleton<ReportAgentAdapter>(sp => new ReportAgentAdapter(
+            sp.GetRequiredService<OllamaService>(),
+            new ToolInvocationService(
+                sp.GetRequiredService<IWebSearchProvider>(),
+                sp.GetRequiredService<OllamaService>()
+            ),
+            sp.GetService<ILogger<ReportAgent>>()
+        ));
 
         // Register agents
         services.AddSingleton<ResearcherAgent>(sp => new ResearcherAgent(
