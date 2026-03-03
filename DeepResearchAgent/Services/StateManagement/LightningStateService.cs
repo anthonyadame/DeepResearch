@@ -143,12 +143,12 @@ public class StateManagementMetrics
 }
 
 /// <summary>
-/// Lightning-based state service with multi-level caching and APO optimization.
+/// Lightning-based state service with multi-level caching and RMPT optimization.
 /// </summary>
 public class LightningStateService : ILightningStateService
 {
     private readonly IAgentLightningService _lightningService;
-    private readonly ILightningVERLService _verlService;
+    private readonly ILightningRLCSService _rlcsService;
     private readonly IMemoryCache _cache;
     private readonly StateManagementMetrics _metrics;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks;
@@ -161,11 +161,11 @@ public class LightningStateService : ILightningStateService
 
     public LightningStateService(
         IAgentLightningService lightningService,
-        ILightningVERLService verlService,
+        ILightningRLCSService rlcsService,
         IMemoryCache cache)
     {
         _lightningService = lightningService;
-        _verlService = verlService;
+        _rlcsService = rlcsService;
         _cache = cache;
         _metrics = new StateManagementMetrics();
         _locks = new ConcurrentDictionary<string, SemaphoreSlim>();
@@ -225,9 +225,9 @@ public class LightningStateService : ILightningStateService
         await lockObj.WaitAsync(ct);
         try
         {
-            // Verify with VERL using EvaluateConfidenceAsync
+            // Verify with RLCS using EvaluateConfidenceAsync
             var json = JsonSerializer.Serialize(state, _jsonOptions);
-            var confidence = await _verlService.EvaluateConfidenceAsync(json, "agent_state");
+            var confidence = await _rlcsService.EvaluateConfidenceAsync(json, "agent_state");
 
             if (confidence.Score < 0.7)
             {
@@ -438,7 +438,7 @@ public class LightningStateService : ILightningStateService
             };
 
             var json = JsonSerializer.Serialize(state, _jsonOptions);
-            var confidence = await _verlService.EvaluateConfidenceAsync(json, "verification_state");
+            var confidence = await _rlcsService.EvaluateConfidenceAsync(json, "verification_state");
 
             if (confidence.Score < 0.7)
             {

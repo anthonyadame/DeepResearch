@@ -28,7 +28,7 @@
 - ✅ **Ollama runtime** (11434) - LLM execution operational
 - ✅ **SearXNG + Crawl4AI** (8080, 11235) - Web search and scraping ready
 - ✅ **Qdrant** (6333) - Vector storage deployed
-- ✅ **Lightning services** (8090) - APO/VERL orchestration ready
+- ✅ **Lightning services** (8090) - orchestration ready
 - ✅ **Redis** (6379) - Distributed cache operational
 - ✅ **InfluxDB** (8086) - Metrics storage operational
 
@@ -50,7 +50,7 @@
   - Status: Infrastructure ready (Crawl4AI :11235, SearXNG :8080)
   - Next: Document `IWebSearchProvider` and resolver wiring, validate SearCrawl4AIAdapter
 
-- **Lightning state services**: ✅ Lightning server deployed with APO/VERL support (:8090)
+- **Lightning state services**: ✅ Lightning server deployed (:8090)
   - Status: Infrastructure ready, state persistence mechanisms in place
   - Next: Confirm `LightningStateService` + `LightningStore` persistence behaviors
 
@@ -84,17 +84,17 @@
   - Status: Vector DB operational, infrastructure ready
   - Next: Validate `QdrantVectorDatabaseService` and `IEmbeddingService` usage paths
 
-- **Agent Lightning orchestration**: ✅ Lightning services deployed with APO/VERL
+- **Agent Lightning orchestration**: ✅ Lightning services deployed
   - Status: Orchestration services running, ready for expansion
   - Next: Expand `AgentLightningService` and extension hooks for task routing
 
-- **Lightning APO**: ✅ Infrastructure running with APO support
-  - Status: LightningAPOConfig in place (:8090)
-  - Next: Operationalize `LightningAPOConfig` and `LightningApoScaler` for strategy-based scaling
+- **Lightning RMPT**: ✅ Infrastructure running with RMPT support
+  - Status: LightningRMPTConfig in place (:8090)
+  - Next: Operationalize `LightningRMPTConfig` and `LightningRMPTScaler` for strategy-based scaling
 
-- **VERL validation**: ✅ Lightning server built with VERL support (cuda variant available)
-  - Status: VERL dependencies in Docker image
-  - Next: Incorporate `LightningVERLService` into quality checks and reporting
+- **RLCS validation**: ✅ Lightning server built with RLCS support
+  - Status: RLCS dependencies in Docker image
+  - Next: Incorporate `LightningRLCSService` into quality checks and reporting
 
 ### 📋 Not Yet Started
 
@@ -104,7 +104,7 @@
 
 ## Long Term (6-12 Months)
 
-- **Adaptive optimization**: integrate circuit breaker, backpressure, and retry strategies into Lightning APO.
+- **Adaptive optimization**: integrate circuit breaker, backpressure, and retry strategies into Lightning Server.
   
 - **Hybrid retrieval**: combine vector search with reranking and structured knowledge stores.
   
@@ -131,7 +131,7 @@
 | **M1** | Clarification, brief, draft, and report agents validated end-to-end | 📋 PENDING | 2026-03-20 |
 | **M2** | Web search provider resolver and adapters fully documented | 🔄 IN PROGRESS | 2026-04-20 |
 | **M3** | Vector database integration verified with Qdrant | 🔄 IN PROGRESS | 2026-05-20 |
-| **M4** | Lightning APO + VERL integration completed | 🔄 IN PROGRESS | 2026-06-20 |
+| **M4** | Lightning RMPT + RLCS integration completed | 🔄 IN PROGRESS | 2026-06-20 |
 | **M5** | Observability + optimization layer expanded for production | 🔄 IN PROGRESS | 2026-07-20 |
 
 ### M0: Docker & Observability Infrastructure ✅ COMPLETE
@@ -174,9 +174,9 @@
 ### M4: Lightning Orchestration - IN PROGRESS
 
 **Target: 2026-06-20**
-- Operationalize Lightning APO config
-- Test `LightningApoScaler` strategies
-- Implement VERL quality checks
+- Operationalize Lightning RMPT config
+- Test `LightningRMPTScaler` strategies
+- Implement RLCS quality checks
 - Document orchestration patterns
 - Load testing and scaling validation
 
@@ -201,7 +201,7 @@
 | **SearXNG** | 8080 | ✅ Running | Meta search engine operational |
 | **Crawl4AI** | 11235 | ✅ Running | Web scraping service operational |
 | **Qdrant** | 6333 | ✅ Running | Vector database operational |
-| **Lightning Services** | 8090 | ✅ Running | APO/VERL orchestration ready |
+| **Lightning Services** | 8090 | ✅ Running | RMPT/RLCS orchestration ready |
 | **Redis** | 6379 | ✅ Running | Distributed cache operational |
 | **InfluxDB** | 8086 | ✅ Running | Time-series metrics storage |
 | **Prometheus** | 9090 | ✅ Running | Metrics collection |

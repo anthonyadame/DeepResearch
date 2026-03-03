@@ -69,7 +69,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Lightning Server - Agent Orchestration with APO & VERL
+  # Lightning Server - Agent Orchestration
   lightning-server:
     build:
       context: ..
@@ -79,13 +79,13 @@ services:
       - "8090:8090"
     environment:
       LIGHTNING_PORT: 8090
-      APO_ENABLED: "true"
-      VERL_ENABLED: "true"
-      APO_STRATEGY: "balanced"
-      APO_MAX_TASKS: 10
-      APO_TASK_TIMEOUT: 300
-      VERL_TRACKING_ENABLED: "true"
-      VERL_CONFIDENCE_THRESHOLD: 0.7
+      RMPT_ENABLED: "true"
+      RLCS_ENABLED: "true"
+      RMPT_STRATEGY: "balanced"
+      RMPT_MAX_TASKS: 10
+      RMPT_TASK_TIMEOUT: 300
+      RLCS_TRACKING_ENABLED: "true"
+      RLCS_CONFIDENCE_THRESHOLD: 0.7
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8090/health"]

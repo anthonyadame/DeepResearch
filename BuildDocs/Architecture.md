@@ -98,5 +98,5 @@ flowchart TB
 - **Runtime**: .NET 8 or later.
 - **LLM Endpoint**: Local `OllamaService` or remote compatible API.
 - **Persistence**: Ensure `LightningStateService` backing store is durable for long runs.
-- **Monitoring**: Optional Grafana/Prometheus stack for APO metrics.
-- **Scaling**: Adjust concurrency limits through APO configuration for workload size.
+- **Monitoring**: Optional Grafana/Prometheus stack for RMPT metrics.
+- **Scaling**: Adjust concurrency limits through RMPT configuration for workload size.

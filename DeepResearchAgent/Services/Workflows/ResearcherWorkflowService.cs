@@ -16,7 +16,7 @@ namespace DeepResearchAgent.Services.Workflows;
 public class ResearcherWorkflowService : IResearcherWorkflowService
 {
     private readonly IMasterWorkflowService _masterWorkflow;
-    private readonly ILightningVERLService _verlService;
+    private readonly ILightningRLCSService _rlcsService;
     private readonly ILogger<ResearcherWorkflowService>? _logger;
 
     private readonly ConcurrentDictionary<string, ResearchProgress> _activeResearch = new();
@@ -24,11 +24,11 @@ public class ResearcherWorkflowService : IResearcherWorkflowService
 
     public ResearcherWorkflowService(
         IMasterWorkflowService masterWorkflow,
-        ILightningVERLService verlService,
+        ILightningRLCSService rlcsService,
         ILogger<ResearcherWorkflowService>? logger = null)
     {
         _masterWorkflow = masterWorkflow;
-        _verlService = verlService;
+        _rlcsService = rlcsService;
         _logger = logger;
     }
 
@@ -86,7 +86,7 @@ public class ResearcherWorkflowService : IResearcherWorkflowService
                     config.FocusTopics,
                     ct);
 
-                // Verify quality using VERL
+                // Verify quality using RLCS
                 var qualityScore = await VerifyResearchQualityAsync(
                     iterationResult.FoundFacts,
                     topic,
@@ -275,7 +275,7 @@ public class ResearcherWorkflowService : IResearcherWorkflowService
 
         try
         {
-            // Use VERL for quality verification
+            // Use RLCS for quality verification
             var confidenceScores = facts.Select(f => f.Confidence).ToList();
             var qualityScore = confidenceScores.Average();
 

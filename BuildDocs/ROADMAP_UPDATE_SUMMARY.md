@@ -78,9 +78,9 @@ The project roadmap has been reviewed and updated to reflect the infrastructure 
 - Next: Validate QdrantVectorDatabaseService and IEmbeddingService
 
 ### M4: Lightning Orchestration 🔄 IN PROGRESS (Target: 2026-06-20)
-- Infrastructure: ✅ Lightning server (8090) with APO/VERL running
+- Infrastructure: ✅ Lightning server (8090) with RMPT/RLCS running
 - Status: Infrastructure ready for expansion
-- Next: Operationalize Lightning APO config and test scaling
+- Next: Operationalize Lightning RMPT config and test scaling
 
 ### M5: Production Observability 🔄 IN PROGRESS (Target: 2026-07-20)
 - Infrastructure: ✅ Full monitoring stack deployed
@@ -150,7 +150,7 @@ Added immediate actions for next 4 weeks:
 
 4. **M4: Lightning Orchestration Expansion**
    - Status: Lightning server (8090) running
-   - Action: Test APO config and scaling
+   - Action: Test RMPT config and scaling
    - Timeline: Weeks 4-6
 
 5. **M5: Workflow Instrumentation**

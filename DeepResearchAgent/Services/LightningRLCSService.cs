@@ -4,10 +4,10 @@ using System.Text.Json.Serialization;
 namespace DeepResearchAgent.Services;
 
 /// <summary>
-/// VERL (Verification and Reasoning Layer) Service for Agent-Lightning.
+/// RLCS (Reasoning Layer Confidence Scoring) Service for Agent-Lightning.
 /// Handles verification of agent outputs, reasoning chain validation, and confidence scoring.
 /// </summary>
-public interface ILightningVERLService
+public interface ILightningRLCSService
 {
     Task<ReasoningChainValidation> ValidateReasoningChainAsync(List<ReasoningStep> steps);
     Task<ConfidenceScore> EvaluateConfidenceAsync(string content, string context);
@@ -15,12 +15,12 @@ public interface ILightningVERLService
     Task<ConsistencyCheckResult> CheckConsistencyAsync(List<string> statements);
 }
 
-public class LightningVERLService : ILightningVERLService
+public class LightningRLCSService : ILightningRLCSService
 {
     private readonly HttpClient _httpClient;
     private readonly string _lightningServerUrl;
 
-    public LightningVERLService(HttpClient httpClient, string lightningServerUrl = "http://localhostr:8090")
+    public LightningRLCSService(HttpClient httpClient, string lightningServerUrl = "http://localhostr:8090")
     {
         _httpClient = httpClient;
         _lightningServerUrl = lightningServerUrl;
@@ -33,7 +33,7 @@ public class LightningVERLService : ILightningVERLService
             var request = new { steps, validatedAt = DateTime.UtcNow };
             
             var response = await _httpClient.PostAsJsonAsync(
-                $"{_lightningServerUrl}/api/verl/validate-reasoning",
+                $"{_lightningServerUrl}/api/rlcs/validate-reasoning",
                 request
             );
             
@@ -61,7 +61,7 @@ public class LightningVERLService : ILightningVERLService
             var request = new { content, context, evaluatedAt = DateTime.UtcNow };
             
             var response = await _httpClient.PostAsJsonAsync(
-                $"{_lightningServerUrl}/api/verl/evaluate-confidence",
+                $"{_lightningServerUrl}/api/rlcs/evaluate-confidence",
                 request
             );
             
@@ -84,7 +84,7 @@ public class LightningVERLService : ILightningVERLService
             var request = new { facts, source, checkedAt = DateTime.UtcNow };
             
             var response = await _httpClient.PostAsJsonAsync(
-                $"{_lightningServerUrl}/api/verl/verify-facts",
+                $"{_lightningServerUrl}/api/rlcs/verify-facts",
                 request
             );
             
@@ -107,7 +107,7 @@ public class LightningVERLService : ILightningVERLService
             var request = new { statements, checkedAt = DateTime.UtcNow };
             
             var response = await _httpClient.PostAsJsonAsync(
-                $"{_lightningServerUrl}/api/verl/check-consistency",
+                $"{_lightningServerUrl}/api/rlcs/check-consistency",
                 request
             );
             
@@ -124,7 +124,7 @@ public class LightningVERLService : ILightningVERLService
     }
 }
 
-// VERL Models
+// RLCS Models
 public class ReasoningStep
 {
     [JsonPropertyName("stepNumber")]

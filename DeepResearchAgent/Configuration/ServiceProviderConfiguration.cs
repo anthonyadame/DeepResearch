@@ -63,7 +63,7 @@ public static class ServiceProviderConfiguration
         string SearXngBaseUrl,
         string Crawl4aiBaseUrl,
         string LightningServerUrl,
-        LightningAPOConfig ApoConfig,
+        LightningRMPTConfig RmptConfig,
         bool VectorDbEnabled,
         string QdrantBaseUrl,
         string QdrantCollectionName,
@@ -82,8 +82,8 @@ public static class ServiceProviderConfiguration
             ?? Environment.GetEnvironmentVariable("LIGHTNING_SERVER_URL")
             ?? "http://localhost:8090";
 
-        var apoConfig = new LightningAPOConfig();
-        configuration.GetSection("Lightning:APO").Bind(apoConfig);
+        var rmptConfig = new LightningRMPTConfig();
+        configuration.GetSection("Lightning:RMPT").Bind(rmptConfig);
 
         var vectorDbEnabled = configuration.GetValue("VectorDatabase:Enabled", false);
         var qdrantBaseUrl = configuration["VectorDatabase:Qdrant:BaseUrl"] ?? "http://localhost:6333";
@@ -99,7 +99,7 @@ public static class ServiceProviderConfiguration
             searxngBaseUrl,
             crawl4aiBaseUrl,
             lightningServerUrl,
-            apoConfig,
+            rmptConfig,
             vectorDbEnabled,
             qdrantBaseUrl,
             qdrantCollectionName,
@@ -114,16 +114,16 @@ public static class ServiceProviderConfiguration
         return new ConfigurationBuilder()
             .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"), optional: true, reloadOnChange: true)
             .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.websearch.json"), optional: true, reloadOnChange: true)
-            .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.apo.json"), optional: true, reloadOnChange: true)
+            .AddJsonFile(Path.Combine(AppContext.BaseDirectory, "appsettings.rmpt.json"), optional: true, reloadOnChange: true)
             .AddEnvironmentVariables()
             .Build();
     }
 
     private static void RegisterConfigurationValues(IServiceCollection services, IConfiguration configuration)
     {
-        var apoConfig = new LightningAPOConfig();
-        configuration.GetSection("Lightning:APO").Bind(apoConfig);
-        services.AddSingleton(apoConfig);
+        var rmptConfig = new LightningRMPTConfig();
+        configuration.GetSection("Lightning:RMPT").Bind(rmptConfig);
+        services.AddSingleton(rmptConfig);
     }
 
     private static void RegisterCoreServices(IServiceCollection services)
@@ -242,24 +242,24 @@ public static class ServiceProviderConfiguration
         services.AddSingleton<IAgentLightningService>(sp =>
         {
             var httpClient = sp.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(AgentLightningService));
-            var apo = sp.GetRequiredService<LightningAPOConfig>();
+            var rmpt = sp.GetRequiredService<LightningRMPTConfig>();
 
-            httpClient.Timeout = TimeSpan.FromSeconds(apo.ResourceLimits.TaskTimeoutSeconds);
+            httpClient.Timeout = TimeSpan.FromSeconds(rmpt.ResourceLimits.TaskTimeoutSeconds);
 
             return new AgentLightningService(
                 httpClient,
                 lightningServerUrl,
                 clientId: null,
-                apo: apo);
+                rmpt: rmpt);
         });
 
-        services.AddSingleton<ILightningVERLService>(sp => new LightningVERLService(
+        services.AddSingleton<ILightningRLCSService>(sp => new LightningRLCSService(
             sp.GetRequiredService<HttpClient>(),
             lightningServerUrl
         ));
 
         services.AddSingleton<ILightningStateService, LightningStateService>();
-        services.AddHostedService<LightningApoScaler>();
+        services.AddHostedService<LightningRmptScaler>();
     }
 
     private static void RegisterWorkflowAndAgentServices(IServiceCollection services)
@@ -321,7 +321,7 @@ public static class ServiceProviderConfiguration
         // Register researcher workflow service
         services.AddSingleton<IResearcherWorkflowService>(sp => new ResearcherWorkflowService(
             sp.GetRequiredService<IMasterWorkflowService>(),
-            sp.GetRequiredService<ILightningVERLService>(),
+            sp.GetRequiredService<ILightningRLCSService>(),
             sp.GetService<ILogger<ResearcherWorkflowService>>()
         ));
 
@@ -387,7 +387,7 @@ public static class ServiceProviderConfiguration
             sp.GetService<IEmbeddingService>(),
             sp.GetService<ILogger<ResearcherWorkflow>>(),
             sp.GetService<IAgentLightningService>(),
-            sp.GetService<LightningAPOConfig>()
+            sp.GetService<LightningRMPTConfig>()
         ));
 
         services.AddSingleton<SupervisorWorkflow>(sp => new SupervisorWorkflow(

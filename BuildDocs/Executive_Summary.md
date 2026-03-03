@@ -107,14 +107,14 @@ A multi-workflow orchestration platform built on .NET 8 that implements five pri
 **Mitigation**:
 - `LightningStateService` persistence layer for state snapshots
 - Pause/resume checkpoint infrastructure (near-term roadmap)
-- Circuit breaker and retry strategies in Lightning APO
+- Circuit breaker and retry strategies in Lightning
 - Monitoring UI for operational visibility
 
 ### Risk 3: Scalability Under High Concurrency
 **Impact**: Medium - Single Ollama instance or query concurrency bottlenecks  
 **Mitigation**:
-- Lightning APO configuration for adaptive concurrency management
-- Strategy-based scaling with `LightningApoScaler`
+- Lightning configuration for adaptive concurrency management
+- Strategy-based scaling with `LightningRMPTScaler`
 - Optional backpressure and rate limiting in pipeline middleware
 - Future: Distributed LLM backend support
 
@@ -149,7 +149,7 @@ A multi-workflow orchestration platform built on .NET 8 that implements five pri
 
 ### Strategic (3-12 Months)
 1. **Vector Database Validation**: Evaluate Qdrant integration for semantic knowledge retrieval (M3)
-2. **Advanced Optimization**: Integrate Lightning APO and VERL for intelligent scaling and quality validation (M4)
+2. **Advanced Optimization**: Integrate RMPT and RLCS for intelligent scaling and quality validation (M4)
 3. **Multi-LLM Support**: Extend beyond Ollama to include hosted endpoints (Claude, GPT-4, etc.)
 4. **Search Strategy Evaluation**: Benchmark vector, knowledge graph, and hybrid retrieval approaches
 

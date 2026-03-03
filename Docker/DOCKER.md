@@ -196,7 +196,7 @@ docker ps | grep deepresearch
 
 3. **lightning-server** (Lightning Orchestration) - port 8090
    - Agent framework orchestration
-   - Supports: APO (Agentic Policy Optimization), VERL (Vector Inference)
+   - Supports: APO (Automatic Prompt Optimization), VERL (Volcano Engine Reinforcement Learning)
    - GPU: Dedicated (device 3)
    - Persistent storage: lightning-data volume
 

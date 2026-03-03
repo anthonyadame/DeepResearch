@@ -6,19 +6,19 @@ using Polly.Extensions.Http;
 namespace DeepResearchAgent.Services;
 
 /// <summary>
-/// Extension methods and helpers for Agent-Lightning APO integration.
+/// Extension methods and helpers for Agent-Lightning RMPT integration.
 /// </summary>
 public static class AgentLightningServiceExtensions
 {
     /// <summary>
-    /// Create retry policy based on APO configuration.
+    /// Create retry policy based on RMPT configuration.
     /// Uses decorrelated jitter for exponential backoff to prevent thundering herd.
     /// </summary>
     public static IAsyncPolicy<HttpResponseMessage> CreateRetryPolicy(
-        LightningAPOConfig apo,
+        LightningRMPTConfig rmpt,
         Action<DelegateResult<HttpResponseMessage>, TimeSpan, int, Context>? onRetry = null)
     {
-        var retryCount = apo.Strategy switch
+        var retryCount = rmpt.Strategy switch
         {
             OptimizationStrategy.HighPerformance => 2,  // Fast fail
             OptimizationStrategy.Balanced => 3,
@@ -38,22 +38,22 @@ public static class AgentLightningServiceExtensions
     }
 
     /// <summary>
-    /// Create concurrency gate (semaphore) based on APO configuration.
+    /// Create concurrency gate (semaphore) based on RMPT configuration.
     /// </summary>
-    public static SemaphoreSlim CreateConcurrencyGate(LightningAPOConfig apo)
+    public static SemaphoreSlim CreateConcurrencyGate(LightningRMPTConfig rmpt)
     {
-        var maxConcurrent = apo.ResourceLimits.MaxConcurrentTasks;
+        var maxConcurrent = rmpt.ResourceLimits.MaxConcurrentTasks;
         return new SemaphoreSlim(maxConcurrent, maxConcurrent);
     }
 
     /// <summary>
-    /// Determine if VERL verification should be performed based on APO strategy.
+    /// Determine if RLCS verification should be performed based on RMPT strategy.
     /// </summary>
-    public static bool ShouldVerify(this LightningAPOConfig apo, bool taskRequiresVerification)
+    public static bool ShouldVerify(this LightningRMPTConfig rmpt, bool taskRequiresVerification)
     {
         if (!taskRequiresVerification) return false;
 
-        return apo.Strategy switch
+        return rmpt.Strategy switch
         {
             OptimizationStrategy.HighPerformance => false,  // Skip for max throughput
             OptimizationStrategy.Balanced => true,
@@ -64,13 +64,13 @@ public static class AgentLightningServiceExtensions
     }
 
     /// <summary>
-    /// Get task priority based on APO strategy.
+    /// Get task priority based on RMPT strategy.
     /// </summary>
-    public static int GetTaskPriority(this LightningAPOConfig apo, int? customPriority = null)
+    public static int GetTaskPriority(this LightningRMPTConfig rmpt, int? customPriority = null)
     {
         if (customPriority.HasValue) return customPriority.Value;
 
-        return apo.Strategy switch
+        return rmpt.Strategy switch
         {
             OptimizationStrategy.HighPerformance => 10,
             OptimizationStrategy.Balanced => 5,
@@ -82,9 +82,9 @@ public static class AgentLightningServiceExtensions
 }
 
 /// <summary>
-/// Options for overriding APO behavior at function call level.
+/// Options for overriding RMPT behavior at function call level.
 /// </summary>
-public class ApoExecutionOptions
+public class RmptExecutionOptions
 {
     /// <summary>
     /// Override optimization strategy for this execution.
@@ -92,7 +92,7 @@ public class ApoExecutionOptions
     public OptimizationStrategy? StrategyOverride { get; set; }
 
     /// <summary>
-    /// Force VERL verification regardless of strategy.
+    /// Force RLCS verification regardless of strategy.
     /// </summary>
     public bool? ForceVerification { get; set; }
 
@@ -107,21 +107,21 @@ public class ApoExecutionOptions
     public TimeSpan? Timeout { get; set; }
 
     /// <summary>
-    /// Disable APO for this specific execution.
+    /// Disable RMPT for this specific execution.
     /// </summary>
-    public bool DisableApo { get; set; }
+    public bool DisableRmpt { get; set; }
 
     /// <summary>
-    /// Create effective APO config by merging overrides with base config.
+    /// Create effective RMPT config by merging overrides with base config.
     /// </summary>
-    public LightningAPOConfig MergeWith(LightningAPOConfig baseConfig)
+    public LightningRMPTConfig MergeWith(LightningRMPTConfig baseConfig)
     {
-        if (DisableApo)
+        if (DisableRmpt)
         {
-            return new LightningAPOConfig { Enabled = false };
+            return new LightningRMPTConfig { Enabled = false };
         }
 
-        var merged = new LightningAPOConfig
+        var merged = new LightningRMPTConfig
         {
             Enabled = baseConfig.Enabled,
             Strategy = StrategyOverride ?? baseConfig.Strategy,

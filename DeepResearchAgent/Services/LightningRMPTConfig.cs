@@ -3,10 +3,10 @@ using System.Text.Json.Serialization;
 namespace DeepResearchAgent.Services;
 
 /// <summary>
-/// Configuration for Agent-Lightning APO (Automatic Performance Optimization).
+/// Configuration for Agent-Lightning RMPT (Resource Management Performance Tuning).
 /// Manages performance tuning, resource allocation, and optimization strategies.
 /// </summary>
-public class LightningAPOConfig
+public class LightningRMPTConfig
 {
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; } = true;

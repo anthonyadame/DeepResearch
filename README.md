@@ -42,7 +42,7 @@ The Deep Research Agent implements a **diffusion-based research refinement loop*
 New service layer for enhanced workflow capabilities:
 
 - **MasterWorkflowService** - Advanced orchestration of multi-agent workflows with checkpoint support
-- **ResearcherWorkflowService** - Intelligent research loop management with VERL integration
+- **ResearcherWorkflowService** - Intelligent research loop management with RLCS integration
 - **PerformanceAnalyticsService** - Tracks metrics and optimization recommendations
 - **SemanticSearchService** - Vector-based semantic search across research findings
 - **StateAccumulatorService** - Manages workflow state accumulation and diffusion

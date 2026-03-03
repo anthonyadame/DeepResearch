@@ -35,7 +35,7 @@ public class ResearcherWorkflow
     private readonly IEmbeddingService? _embeddingService;
     private readonly ILogger<ResearcherWorkflow>? _logger;
     private readonly IAgentLightningService? _lightningService;
-    private readonly LightningAPOConfig? _apoConfig;
+    private readonly LightningRMPTConfig? _rmptConfig;
 
     public ResearcherWorkflow(
         ILightningStateService stateService,
@@ -46,7 +46,7 @@ public class ResearcherWorkflow
         IEmbeddingService? embeddingService = null,
         ILogger<ResearcherWorkflow>? logger = null,
         IAgentLightningService? lightningService = null,
-        LightningAPOConfig? apoConfig = null)
+        LightningRMPTConfig? rmptConfig = null)
     {
         _stateService = stateService ?? throw new ArgumentNullException(nameof(stateService));
         _searchService = searchService ?? throw new ArgumentNullException(nameof(searchService));
@@ -56,7 +56,7 @@ public class ResearcherWorkflow
         _embeddingService = embeddingService;
         _logger = logger;
         _lightningService = lightningService;
-        _apoConfig = apoConfig;
+        _rmptConfig = rmptConfig;
     }
 
     /// <summary>
@@ -67,15 +67,15 @@ public class ResearcherWorkflow
         string topic,
         string? researchId = null,
         CancellationToken cancellationToken = default,
-        ApoExecutionOptions? apoOptions = null)
+        RmptExecutionOptions? rmptOptions = null)
     {
         var localResearchId = researchId ?? Guid.NewGuid().ToString();
         _logger?.LogInformation("ResearcherWorkflow starting for topic: {topic}, Research ID: {researchId}", topic, localResearchId);
 
-        // Submit APO task if Lightning integration is enabled
-        if (_lightningService != null && _apoConfig?.Enabled == true)
+        // Submit RMPT task if Lightning integration is enabled
+        if (_lightningService != null && _rmptConfig?.Enabled == true)
         {
-            var apoTask = new AgentTask
+            var rmptTask = new AgentTask
             {
                 Name = "researcher",
                 Description = $"Research topic: {topic}",
@@ -84,18 +84,18 @@ public class ResearcherWorkflow
                     ["topic"] = topic, 
                     ["researchId"] = localResearchId 
                 },
-                VerificationRequired = _apoConfig.Strategy != OptimizationStrategy.HighPerformance
+                VerificationRequired = _rmptConfig.Strategy != OptimizationStrategy.HighPerformance
             };
 
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    await _lightningService.SubmitTaskAsync("researcher", apoTask, apoOptions);
+                    await _lightningService.SubmitTaskAsync("researcher", rmptTask, rmptOptions);
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogWarning(ex, "Failed to submit APO task for research");
+                    _logger?.LogWarning(ex, "Failed to submit RMPT task for research");
                 }
             }, cancellationToken);
         }

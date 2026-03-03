@@ -30,8 +30,8 @@ async def test_server_info(http_client):
     assert response.status_code == 200
     data = response.json()
     assert data["version"] == "1.0.0"
-    assert "apoEnabled" in data
-    assert "verlEnabled" in data
+    assert "rmptEnabled" in data
+    assert "rlcsEnabled" in data
 
 @pytest.mark.asyncio
 async def test_agent_registration(http_client):
@@ -97,14 +97,14 @@ async def test_task_submission_and_retrieval(http_client):
     assert response.status_code == 200
 
 @pytest.mark.asyncio
-async def test_verl_verify_result(http_client):
-    """Test VERL verification endpoint"""
+async def test_rlcs_verify_result(http_client):
+    """Test RLCS verification endpoint"""
     verification_data = {
         "taskId": "test-task-123",
         "result": "This is a comprehensive result with detailed information"
     }
     
-    response = await http_client.post("/api/verl/verify", json=verification_data)
+    response = await http_client.post("/api/rlcs/verify", json=verification_data)
     assert response.status_code == 200
     data = response.json()
     assert "isValid" in data
@@ -112,8 +112,8 @@ async def test_verl_verify_result(http_client):
     assert data["taskId"] == "test-task-123"
 
 @pytest.mark.asyncio
-async def test_verl_validate_reasoning(http_client):
-    """Test VERL reasoning chain validation"""
+async def test_rlcs_validate_reasoning(http_client):
+    """Test RLCS reasoning chain validation"""
     reasoning_data = {
         "steps": [
             {
@@ -133,7 +133,7 @@ async def test_verl_validate_reasoning(http_client):
         ]
     }
     
-    response = await http_client.post("/api/verl/validate-reasoning", json=reasoning_data)
+    response = await http_client.post("/api/rlcs/validate-reasoning", json=reasoning_data)
     assert response.status_code == 200
     data = response.json()
     assert "isValid" in data

@@ -4,42 +4,42 @@ using Microsoft.Extensions.Logging;
 namespace DeepResearchAgent.Services;
 
 /// <summary>
-/// Background service for Agent-Lightning APO auto-scaling.
-/// Monitors server load and triggers scaling decisions based on APO configuration.
+/// Background service for Agent-Lightning RMPT auto-scaling.
+/// Monitors server load and triggers scaling decisions based on RMPT configuration.
 /// </summary>
-public class LightningApoScaler : BackgroundService
+public class LightningRmptScaler : BackgroundService
 {
-    private readonly LightningAPOConfig _apo;
+    private readonly LightningRMPTConfig _rmpt;
     private readonly IAgentLightningService _lightning;
-    private readonly ILogger<LightningApoScaler> _logger;
+    private readonly ILogger<LightningRmptScaler> _logger;
 
-    public LightningApoScaler(
-        LightningAPOConfig apo,
+    public LightningRmptScaler(
+        LightningRMPTConfig rmpt,
         IAgentLightningService lightning,
-        ILogger<LightningApoScaler> logger)
+        ILogger<LightningRmptScaler> logger)
     {
-        _apo = apo ?? throw new ArgumentNullException(nameof(apo));
+        _rmpt = rmpt ?? throw new ArgumentNullException(nameof(rmpt));
         _lightning = lightning ?? throw new ArgumentNullException(nameof(lightning));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        if (!_apo.Enabled || !_apo.AutoScaling.Enabled)
+        if (!_rmpt.Enabled || !_rmpt.AutoScaling.Enabled)
         {
-            _logger.LogInformation("APO auto-scaling disabled via configuration");
+            _logger.LogInformation("RMPT auto-scaling disabled via configuration");
             return;
         }
 
         _logger.LogInformation(
-            "APO auto-scaling enabled: {Strategy} strategy, {Min}-{Max} instances, scale-up @ {Up}%, scale-down @ {Down}%",
-            _apo.Strategy,
-            _apo.AutoScaling.MinInstances,
-            _apo.AutoScaling.MaxInstances,
-            _apo.AutoScaling.ScaleUpThresholdPercent,
-            _apo.AutoScaling.ScaleDownThresholdPercent);
+            "RMPT auto-scaling enabled: {Strategy} strategy, {Min}-{Max} instances, scale-up @ {Up}%, scale-down @ {Down}%",
+            _rmpt.Strategy,
+            _rmpt.AutoScaling.MinInstances,
+            _rmpt.AutoScaling.MaxInstances,
+            _rmpt.AutoScaling.ScaleUpThresholdPercent,
+            _rmpt.AutoScaling.ScaleDownThresholdPercent);
 
-        var currentInstances = _apo.AutoScaling.MinInstances;
+        var currentInstances = _rmpt.AutoScaling.MinInstances;
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -50,7 +50,7 @@ public class LightningApoScaler : BackgroundService
                 if (!isHealthy)
                 {
                     _logger.LogWarning("Lightning server unhealthy, skipping auto-scaling check");
-                    await Task.Delay(TimeSpan.FromSeconds(_apo.AutoScaling.CooldownSeconds), stoppingToken);
+                    await Task.Delay(TimeSpan.FromSeconds(_rmpt.AutoScaling.CooldownSeconds), stoppingToken);
                     continue;
                 }
 
@@ -59,20 +59,20 @@ public class LightningApoScaler : BackgroundService
                 var load = CalculateLoad(serverInfo);
 
                 _logger.LogDebug(
-                    "APO auto-scaler: Load={Load:F1}%, Agents={Agents}, Connections={Connections}, Instances={Instances}",
+                    "RMPT auto-scaler: Load={Load:F1}%, Agents={Agents}, Connections={Connections}, Instances={Instances}",
                     load,
                     serverInfo.RegisteredAgents,
                     serverInfo.ActiveConnections,
                     currentInstances);
 
                 // Scale-up decision
-                if (load >= _apo.AutoScaling.ScaleUpThresholdPercent && 
-                    currentInstances < _apo.AutoScaling.MaxInstances)
+                if (load >= _rmpt.AutoScaling.ScaleUpThresholdPercent && 
+                    currentInstances < _rmpt.AutoScaling.MaxInstances)
                 {
                     _logger.LogWarning(
-                        "APO auto-scaler: Load {Load:F1}% exceeds scale-up threshold {Threshold}% - scaling up from {Current} to {Target} instances",
+                        "RMPT auto-scaler: Load {Load:F1}% exceeds scale-up threshold {Threshold}% - scaling up from {Current} to {Target} instances",
                         load,
-                        _apo.AutoScaling.ScaleUpThresholdPercent,
+                        _rmpt.AutoScaling.ScaleUpThresholdPercent,
                         currentInstances,
                         currentInstances + 1);
 
@@ -81,13 +81,13 @@ public class LightningApoScaler : BackgroundService
                     currentInstances++;
                 }
                 // Scale-down decision
-                else if (load <= _apo.AutoScaling.ScaleDownThresholdPercent && 
-                         currentInstances > _apo.AutoScaling.MinInstances)
+                else if (load <= _rmpt.AutoScaling.ScaleDownThresholdPercent && 
+                         currentInstances > _rmpt.AutoScaling.MinInstances)
                 {
                     _logger.LogInformation(
-                        "APO auto-scaler: Load {Load:F1}% below scale-down threshold {Threshold}% - scaling down from {Current} to {Target} instances",
+                        "RMPT auto-scaler: Load {Load:F1}% below scale-down threshold {Threshold}% - scaling down from {Current} to {Target} instances",
                         load,
-                        _apo.AutoScaling.ScaleDownThresholdPercent,
+                        _rmpt.AutoScaling.ScaleDownThresholdPercent,
                         currentInstances,
                         currentInstances - 1);
 
@@ -97,16 +97,16 @@ public class LightningApoScaler : BackgroundService
                 }
 
                 // Wait for cooldown period before next check
-                await Task.Delay(TimeSpan.FromSeconds(_apo.AutoScaling.CooldownSeconds), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(_rmpt.AutoScaling.CooldownSeconds), stoppingToken);
             }
             catch (OperationCanceledException)
             {
-                _logger.LogInformation("APO auto-scaler shutting down");
+                _logger.LogInformation("RMPT auto-scaler shutting down");
                 break;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in APO auto-scaler loop");
+                _logger.LogError(ex, "Error in RMPT auto-scaler loop");
                 await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
             }
         }
@@ -135,7 +135,7 @@ public class LightningApoScaler : BackgroundService
         // 3. Update service discovery
         
         _logger.LogInformation(
-            "APO auto-scaler: Triggering scale-up from {Current} to {Target} instances",
+            "RMPT auto-scaler: Triggering scale-up from {Current} to {Target} instances",
             currentInstances,
             targetInstances);
 
@@ -151,7 +151,7 @@ public class LightningApoScaler : BackgroundService
         // 3. Call orchestrator API to remove instance
         
         _logger.LogInformation(
-            "APO auto-scaler: Triggering scale-down from {Current} to {Target} instances",
+            "RMPT auto-scaler: Triggering scale-down from {Current} to {Target} instances",
             currentInstances,
             targetInstances);
 

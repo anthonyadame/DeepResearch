@@ -42,7 +42,7 @@ public class ConsoleHost
         Console.WriteLine($"✓ Web search + scraping configured (SearXNG: {_searxngBaseUrl}, Crawl4AI: {_crawl4aiBaseUrl})");
         Console.WriteLine("✓ Knowledge persistence configured (LightningStore)");
         Console.WriteLine($"✓ Agent-Lightning integration configured ({_lightningServerUrl})");
-        //Console.WriteLine("✓ VERL (Verification and Reasoning Layer) enabled");
+        
         Console.WriteLine("✓ Workflows initialized\n");
 
         bool running = true;
@@ -297,8 +297,8 @@ public class ConsoleHost
                 var serverInfo = await lightningService.GetServerInfoAsync();
 
                 Console.WriteLine($"✓ Server Version: {serverInfo.Version}");
-                Console.WriteLine($"✓ APO (Auto Performance Optimization): {(serverInfo.ApoEnabled ? "Enabled" : "Disabled")}");
-                Console.WriteLine($"✓ VERL (Verification and Reasoning Layer): {(serverInfo.VerlEnabled ? "Enabled" : "Disabled")}");
+                Console.WriteLine($"✓ RMPT (Resource Management Performance Tuning): {(serverInfo.RmptEnabled ? "Enabled" : "Disabled")}");
+                Console.WriteLine($"✓ RLCS (Reasoning Layer Confidence Scoring): {(serverInfo.RlcsEnabled ? "Enabled" : "Disabled")}");
                 Console.WriteLine($"✓ Registered Agents: {serverInfo.RegisteredAgents}");
                 Console.WriteLine($"✓ Active Connections: {serverInfo.ActiveConnections}");
 

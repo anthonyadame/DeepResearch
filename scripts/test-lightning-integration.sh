@@ -59,10 +59,10 @@ TASK_RESPONSE=$(curl -s -X POST http://localhost:8090/api/tasks/submit \
 echo $TASK_RESPONSE | jq
 TASK_ID=$(echo $TASK_RESPONSE | jq -r '.taskId')
 
-# Verify with VERL
+# Verify with RLCS
 echo ""
-echo "7️⃣ Testing VERL verification..."
-curl -s -X POST http://localhost:8090/api/verl/verify \
+echo "7️⃣ Testing RLCS verification..."
+curl -s -X POST http://localhost:8090/api/rlcs/verify \
   -H "Content-Type: application/json" \
   -d "{
     \"taskId\": \"$TASK_ID\",

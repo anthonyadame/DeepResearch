@@ -53,7 +53,7 @@ docker-compose -f Docker/docker-compose.yml up -d
 - Deep Research Agent (CLI)
 - Ollama LLM (11434)
 - Crawl4AI Web Scraper (11235)
-- Lightning Server APO/VERL (8090)
+- Lightning Server (8090)
 - Redis Cache (6379)
 - Qdrant Vector DB (6333)
 - InfluxDB Metrics (8086)

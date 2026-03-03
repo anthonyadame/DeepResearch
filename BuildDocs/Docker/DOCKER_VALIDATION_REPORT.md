@@ -23,7 +23,7 @@
 | Deep Research API | research-api | Up ~1min | Healthy | 5000 | HTTP API endpoint verified |
 | Crawl4AI | research-crawl4ai | Up ~1min | Healthy | 11235 | Web scraping service |
 | InfluxDB | research-influxdb | Up ~1min | Healthy | 8086 | Time-series database |
-| Lightning Server | research-lightning-server | Up ~1min | Healthy | 8090 | Agent orchestration with APO/VERL |
+| Lightning Server | research-lightning-server | Up ~1min | Healthy | 8090 | Agent orchestration |
 | Redis | research-redis | Up ~1min | Healthy | 6379 | Distributed cache |
 | Caddy | research-caddy | Up ~1min | Running | 80/443 | Reverse proxy/TLS termination |
 | Redis Exporter | research-redis-exporter | Up ~1min | Running | 9121 | Prometheus metrics collector |
@@ -125,7 +125,7 @@ These services are functionally operational but health checks are failing due to
 ### Docker/lightning-server/Dockerfile
 - Fixed: COPY paths for requirements.txt and server.py
 - Status: Builds successfully (both base and cuda variants)
-- Features: Python 3.11, PyTorch, Agent Lightning with APO/VERL
+- Features: Python 3.11, PyTorch, Agent Lightning
 
 ---
 

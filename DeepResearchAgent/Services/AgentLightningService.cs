@@ -9,7 +9,7 @@ namespace DeepResearchAgent.Services;
 
 /// <summary>
 /// Integration with Microsoft Agent-Lightning for distributed agent orchestration.
-/// Supports Lightning Server/Client architecture with APO (Automatic Performance Optimization) and VERL (Verification and Reasoning Layer).
+/// Supports Lightning Server/Client architecture with RMPT (Resource Management Performance Tuning) and RLCS (Reasoning Layer Confidence Scoring).
 /// Enhanced with circuit breaker pattern for resilience.
 /// </summary>
 public interface IAgentLightningService
@@ -17,12 +17,12 @@ public interface IAgentLightningService
     Task<bool> IsHealthyAsync();
     Task<LightningServerInfo> GetServerInfoAsync();
     Task<AgentRegistration> RegisterAgentAsync(string agentId, string agentType, Dictionary<string, object> capabilities);
-    Task<AgentTaskResult> SubmitTaskAsync(string agentId, AgentTask task, ApoExecutionOptions? apoOptions = null);
+    Task<AgentTaskResult> SubmitTaskAsync(string agentId, AgentTask task, RmptExecutionOptions? rmptOptions = null);
     Task<List<AgentTask>> GetPendingTasksAsync(string agentId);
     Task UpdateTaskStatusAsync(string taskId, TaskStatus status, string? result = null);
     Task<VerificationResult> VerifyResultAsync(string taskId, string result);
-    
-    LightningAPOConfig GetApoConfig();
+
+    LightningRMPTConfig GetRmptConfig();
     CircuitState GetCircuitState();
 }
 
@@ -32,7 +32,7 @@ public class AgentLightningService : IAgentLightningService
     private readonly string _lightningServerUrl;
     private readonly string _clientId;
     private readonly JsonSerializerOptions _jsonOptions;
-    private readonly LightningAPOConfig _apo;
+    private readonly LightningRMPTConfig _rmpt;
     private readonly ILogger<AgentLightningService>? _logger;
     private readonly SemaphoreSlim _concurrencyGate;
     private readonly IAsyncPolicy<HttpResponseMessage> _retryPolicy;
@@ -42,15 +42,15 @@ public class AgentLightningService : IAgentLightningService
         HttpClient httpClient,
         string lightningServerUrl = "http://localhost:8090",
         string? clientId = null,
-        LightningAPOConfig? apo = null,
+        LightningRMPTConfig? rmpt = null,
         ILogger<AgentLightningService>? logger = null)
     {
         _httpClient = httpClient;
         _lightningServerUrl = lightningServerUrl;
         _clientId = clientId ?? $"research-agent-{Guid.NewGuid():N}";
-        _apo = apo ?? new LightningAPOConfig();
+        _rmpt = rmpt ?? new LightningRMPTConfig();
         _logger = logger;
-        
+
         _jsonOptions = new JsonSerializerOptions
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -59,9 +59,9 @@ public class AgentLightningService : IAgentLightningService
             Converters = { new JsonStringEnumConverter() }
         };
 
-        // Initialize APO components
-        _concurrencyGate = AgentLightningServiceExtensions.CreateConcurrencyGate(_apo);
-        _retryPolicy = AgentLightningServiceExtensions.CreateRetryPolicy(_apo, OnRetry);
+        // Initialize RMPT components
+        _concurrencyGate = AgentLightningServiceExtensions.CreateConcurrencyGate(_rmpt);
+        _retryPolicy = AgentLightningServiceExtensions.CreateRetryPolicy(_rmpt, OnRetry);
 
         // Initialize circuit breaker pipeline
         _circuitBreakerPipeline = CreateCircuitBreakerPipeline();
@@ -69,7 +69,7 @@ public class AgentLightningService : IAgentLightningService
 
     private ResiliencePipeline<HttpResponseMessage> CreateCircuitBreakerPipeline()
     {
-        if (!_apo.CircuitBreaker.Enabled)
+        if (!_rmpt.CircuitBreaker.Enabled)
         {
             // Return pass-through pipeline if circuit breaker disabled
             return ResiliencePipeline<HttpResponseMessage>.Empty;
@@ -80,17 +80,17 @@ public class AgentLightningService : IAgentLightningService
         // Add circuit breaker
         pipelineBuilder.AddCircuitBreaker(new CircuitBreakerStrategyOptions<HttpResponseMessage>
         {
-            FailureRatio = _apo.CircuitBreaker.FailureRateThreshold / 100.0,
-            SamplingDuration = TimeSpan.FromSeconds(_apo.CircuitBreaker.SamplingDurationSeconds),
-            MinimumThroughput = _apo.CircuitBreaker.MinimumThroughput,
-            BreakDuration = TimeSpan.FromSeconds(_apo.CircuitBreaker.BreakDurationSeconds),
+            FailureRatio = _rmpt.CircuitBreaker.FailureRateThreshold / 100.0,
+            SamplingDuration = TimeSpan.FromSeconds(_rmpt.CircuitBreaker.SamplingDurationSeconds),
+            MinimumThroughput = _rmpt.CircuitBreaker.MinimumThroughput,
+            BreakDuration = TimeSpan.FromSeconds(_rmpt.CircuitBreaker.BreakDurationSeconds),
             ShouldHandle = new PredicateBuilder<HttpResponseMessage>()
                 .Handle<HttpRequestException>()
                 .Handle<TaskCanceledException>()
                 .HandleResult(r => !r.IsSuccessStatusCode),
             OnOpened = args =>
             {
-                if (_apo.CircuitBreaker.LogStateChanges)
+                if (_rmpt.CircuitBreaker.LogStateChanges)
                 {
                     _logger?.LogWarning(
                         "Circuit breaker OPENED for Lightning server. Failure rate: {FailureRate}%. Break duration: {Duration}s",
@@ -100,7 +100,7 @@ public class AgentLightningService : IAgentLightningService
             },
             OnClosed = args =>
             {
-                if (_apo.CircuitBreaker.LogStateChanges)
+                if (_rmpt.CircuitBreaker.LogStateChanges)
                 {
                     _logger?.LogInformation("Circuit breaker CLOSED for Lightning server. Service recovered.");
                 }
@@ -108,7 +108,7 @@ public class AgentLightningService : IAgentLightningService
             },
             OnHalfOpened = args =>
             {
-                if (_apo.CircuitBreaker.LogStateChanges)
+                if (_rmpt.CircuitBreaker.LogStateChanges)
                 {
                     _logger?.LogInformation("Circuit breaker HALF-OPEN for Lightning server. Testing recovery...");
                 }
@@ -130,7 +130,7 @@ public class AgentLightningService : IAgentLightningService
     {
     }
 
-    public LightningAPOConfig GetApoConfig() => _apo;
+    public LightningRMPTConfig GetRmptConfig() => _rmpt;
 
     public async Task<bool> IsHealthyAsync()
     {
@@ -193,24 +193,24 @@ public class AgentLightningService : IAgentLightningService
         }
     }
 
-    public async Task<AgentTaskResult> SubmitTaskAsync(string agentId, AgentTask task, ApoExecutionOptions? apoOptions = null)
+    public async Task<AgentTaskResult> SubmitTaskAsync(string agentId, AgentTask task, RmptExecutionOptions? rmptOptions = null)
     {
-        var effectiveApo = apoOptions?.MergeWith(_apo) ?? _apo;
-        
-        if (!effectiveApo.Enabled)
+        var effectiveRmpt = rmptOptions?.MergeWith(_rmpt) ?? _rmpt;
+
+        if (!effectiveRmpt.Enabled)
         {
-            // Bypass APO if disabled
+            // Bypass RMPT if disabled
             return await SubmitTaskDirectAsync(agentId, task);
         }
 
         await _concurrencyGate.WaitAsync();
-        
+
         try
         {
-            
+
             task.SubmittedAt = DateTime.UtcNow;
             task.Status = TaskStatus.Submitted;
-            task.Priority = apoOptions?.Priority ?? effectiveApo.GetTaskPriority();
+            task.Priority = rmptOptions?.Priority ?? effectiveRmpt.GetTaskPriority();
 
             var requesturi = $"{_lightningServerUrl}/api/tasks/submit";
             var requestBody = new { agentId, task };
@@ -232,8 +232,8 @@ public class AgentLightningService : IAgentLightningService
             catch (BrokenCircuitException ex)
             {
                 _logger?.LogWarning("Circuit breaker is OPEN. Lightning server unavailable. Falling back to local execution.");
-                
-                if (effectiveApo.CircuitBreaker.EnableFallback)
+
+                if (effectiveRmpt.CircuitBreaker.EnableFallback)
                 {
                     return await ExecuteFallbackAsync(agentId, task);
                 }
@@ -242,14 +242,14 @@ public class AgentLightningService : IAgentLightningService
             }
 
             response.EnsureSuccessStatusCode();
-            
+
             var content = await response.Content.ReadAsStringAsync();
             var result = JsonSerializer.Deserialize<AgentTaskResult>(content, _jsonOptions);
 
-            // Conditional VERL verification based on APO strategy
-            var shouldVerify = apoOptions?.ForceVerification 
-                ?? effectiveApo.ShouldVerify(task.VerificationRequired);
-            
+            // Conditional RLCS verification based on RMPT strategy
+            var shouldVerify = rmptOptions?.ForceVerification 
+                ?? effectiveRmpt.ShouldVerify(task.VerificationRequired);
+
             if (shouldVerify && result?.TaskId != null)
             {
                 _ = Task.Run(async () => 
@@ -260,7 +260,7 @@ public class AgentLightningService : IAgentLightningService
                     }
                     catch (Exception ex)
                     {
-                        _logger?.LogInformation("lightning.apo", "verification_failed");
+                        _logger?.LogInformation("lightning.rmpt", "verification_failed");
                         // Log but don't throw - verification is best-effort
                     }
                 });
@@ -380,22 +380,22 @@ public class AgentLightningService : IAgentLightningService
         try
         {
             var verification = new { taskId, result, verifiedAt = DateTime.UtcNow };
-            
+
             var response = await _httpClient.PostAsJsonAsync(
-                $"{_lightningServerUrl}/api/verl/verify",
+                $"{_lightningServerUrl}/api/rlcs/verify",
                 verification,
                 _jsonOptions
             );
-            
+
             response.EnsureSuccessStatusCode();
-            
+
             var content = await response.Content.ReadAsStringAsync();
             var verificationResult = JsonSerializer.Deserialize<VerificationResult>(content, _jsonOptions);
             return verificationResult ?? new VerificationResult { IsValid = true, TaskId = taskId };
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException("VERL verification failed", ex);
+            throw new InvalidOperationException("RLCS verification failed", ex);
         }
     }
 }
@@ -406,11 +406,11 @@ public class LightningServerInfo
     [JsonPropertyName("version")]
     public string Version { get; set; } = "1.0.0";
 
-    [JsonPropertyName("apoEnabled")]
-    public bool ApoEnabled { get; set; } = true;
+    [JsonPropertyName("rmptEnabled")]
+    public bool RmptEnabled { get; set; } = true;
 
-    [JsonPropertyName("verlEnabled")]
-    public bool VerlEnabled { get; set; } = true;
+    [JsonPropertyName("rlcsEnabled")]
+    public bool RlcsEnabled { get; set; } = true;
 
     [JsonPropertyName("registeredAgents")]
     public int RegisteredAgents { get; set; }

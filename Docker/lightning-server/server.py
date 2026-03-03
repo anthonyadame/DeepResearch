@@ -1,6 +1,6 @@
 """
-Lightning Server - Agent Orchestration with Microsoft Agent-Lightning (APO & VERL)
-Provides FastAPI wrapper around Agent-Lightning's LightningStore with APO and VERL support.
+Lightning Server - Agent Orchestration with Microsoft Agent-Lightning (RMPT & RLCS)
+Provides FastAPI wrapper around Agent-Lightning's LightningStore with RMPT and RLCS support.
 """
 import os
 import logging
@@ -44,16 +44,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-APO_ENABLED = os.getenv("APO_ENABLED", "true").lower() == "true"
-VERL_ENABLED = os.getenv("VERL_ENABLED", "true").lower() == "true"
-APO_STRATEGY = os.getenv("APO_STRATEGY", "balanced")
-APO_MAX_TASKS = int(os.getenv("APO_MAX_TASKS", "10"))
-VERL_CONFIDENCE_THRESHOLD = float(os.getenv("VERL_CONFIDENCE_THRESHOLD", "0.7"))
+RMPT_ENABLED = os.getenv("RMPT_ENABLED", "true").lower() == "true"
+RLCS_ENABLED = os.getenv("RLCS_ENABLED", "true").lower() == "true"
+RMPT_STRATEGY = os.getenv("RMPT_STRATEGY", "balanced")
+RMPT_MAX_TASKS = int(os.getenv("RMPT_MAX_TASKS", "10"))
+RLCS_CONFIDENCE_THRESHOLD = float(os.getenv("RLCS_CONFIDENCE_THRESHOLD", "0.7"))
 LIGHTNING_PORT = int(os.getenv("LIGHTNING_PORT", "9090"))
 
 app = FastAPI(
     title="Lightning Server",
-    description="Agent orchestration with Microsoft Agent-Lightning (APO & VERL)",
+    description="Agent orchestration with Microsoft Agent-Lightning",
     version="1.0.0"
 )
 
@@ -162,8 +162,8 @@ class ConsistencyCheckResult(BaseModel):
 
 class LightningServerInfo(BaseModel):
     version: str = "1.0.0"
-    apoEnabled: bool = APO_ENABLED
-    verlEnabled: bool = VERL_ENABLED
+    rmptEnabled: bool = RMPT_ENABLED
+    rlcsEnabled: bool = RLCS_ENABLED
     registeredAgents: int = 0
     activeConnections: int = 0
     startedAt: datetime = Field(default_factory=datetime.utcnow)
@@ -224,8 +224,8 @@ async def get_server_info():
     
     return LightningServerInfo(
         version="1.0.0",
-        apoEnabled=APO_ENABLED,
-        verlEnabled=VERL_ENABLED,
+        rmptEnabled=RMPT_ENABLED,
+        rlcsEnabled=RLCS_ENABLED,
         registeredAgents=len(registered_agents),
         activeConnections=sum(1 for a in registered_agents.values() if a.isActive),
         startedAt=server_start_time,
@@ -382,20 +382,20 @@ async def update_task_status(task_id: str, payload: Dict[str, Any]):
         logger.error(f"Failed to update task status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# ========== VERL Endpoints =========
-@app.post("/api/verl/verify", response_model=VerificationResult)
+# ========== RLCS Endpoints =========
+@app.post("/api/rlcs/verify", response_model=VerificationResult)
 async def verify_result(payload: Dict[str, Any]):
-    """Verify task result using VERL"""
-    if not VERL_ENABLED:
-        raise HTTPException(status_code=503, detail="VERL not enabled")
-    
+    """Verify task result using RLCS"""
+    if not RLCS_ENABLED:
+        raise HTTPException(status_code=503, detail="RLCS not enabled")
+
     task_id = payload.get("taskId")
     result = payload.get("result")
-    
+
     if not task_id or result is None:
         raise HTTPException(status_code=400, detail="Missing taskId or result")
-    
-    verification = await verl_verify_result(task_id, result)
+
+    verification = await rlcs_verify_result(task_id, result)
     
     if lightning_store:
         try:
@@ -410,65 +410,65 @@ async def verify_result(payload: Dict[str, Any]):
     
     return verification
 
-@app.post("/api/verl/validate-reasoning", response_model=ReasoningChainValidation)
+@app.post("/api/rlcs/validate-reasoning", response_model=ReasoningChainValidation)
 async def validate_reasoning(payload: Dict[str, Any]):
     """Validate reasoning chain"""
-    if not VERL_ENABLED:
-        raise HTTPException(status_code=503, detail="VERL not enabled")
-    
+    if not RLCS_ENABLED:
+        raise HTTPException(status_code=503, detail="RLCS not enabled")
+
     steps_data = payload.get("steps", [])
     steps = [ReasoningStep(**step) for step in steps_data]
-    
-    return await verl_validate_reasoning_chain(steps)
 
-@app.post("/api/verl/evaluate-confidence", response_model=ConfidenceScore)
+    return await rlcs_validate_reasoning_chain(steps)
+
+@app.post("/api/rlcs/evaluate-confidence", response_model=ConfidenceScore)
 async def evaluate_confidence(payload: Dict[str, Any]):
     """Evaluate confidence"""
-    if not VERL_ENABLED:
-        raise HTTPException(status_code=503, detail="VERL not enabled")
-    
+    if not RLCS_ENABLED:
+        raise HTTPException(status_code=503, detail="RLCS not enabled")
+
     content = payload.get("content", "")
     context = payload.get("context", "")
-    
-    return await verl_evaluate_confidence(content, context)
 
-@app.post("/api/verl/verify-facts", response_model=FactCheckResult)
+    return await rlcs_evaluate_confidence(content, context)
+
+@app.post("/api/rlcs/verify-facts", response_model=FactCheckResult)
 async def verify_facts(payload: Dict[str, Any]):
     """Verify facts"""
-    if not VERL_ENABLED:
-        raise HTTPException(status_code=503, detail="VERL not enabled")
-    
+    if not RLCS_ENABLED:
+        raise HTTPException(status_code=503, detail="RLCS not enabled")
+
     facts = payload.get("facts", [])
     source = payload.get("source", "")
-    
-    return await verl_verify_facts(facts, source)
 
-@app.post("/api/verl/check-consistency", response_model=ConsistencyCheckResult)
+    return await rlcs_verify_facts(facts, source)
+
+@app.post("/api/rlcs/check-consistency", response_model=ConsistencyCheckResult)
 async def check_consistency(payload: Dict[str, Any]):
     """Check consistency"""
-    if not VERL_ENABLED:
-        raise HTTPException(status_code=503, detail="VERL not enabled")
-    
-    statements = payload.get("statements", [])
-    
-    return await verl_check_consistency(statements)
+    if not RLCS_ENABLED:
+        raise HTTPException(status_code=503, detail="RLCS not enabled")
 
-# ========== VERL Implementation Functions =========
-async def verl_verify_result(task_id: str, result: str) -> VerificationResult:
+    statements = payload.get("statements", [])
+
+    return await rlcs_check_consistency(statements)
+
+# ========== RLCS Implementation Functions =========
+async def rlcs_verify_result(task_id: str, result: str) -> VerificationResult:
     """Verify task result"""
     issues = []
     confidence = 0.8
-    
+
     if len(result) < 10:
         issues.append("Result too short")
         confidence -= 0.2
-    
+
     if "error" in result.lower():
         issues.append("Result contains errors")
         confidence -= 0.3
-    
-    is_valid = confidence >= VERL_CONFIDENCE_THRESHOLD
-    
+
+    is_valid = confidence >= RLCS_CONFIDENCE_THRESHOLD
+
     return VerificationResult(
         taskId=task_id,
         isValid=is_valid,
@@ -477,21 +477,21 @@ async def verl_verify_result(task_id: str, result: str) -> VerificationResult:
         verifiedAt=datetime.utcnow()
     )
 
-async def verl_validate_reasoning_chain(steps: List[ReasoningStep]) -> ReasoningChainValidation:
+async def rlcs_validate_reasoning_chain(steps: List[ReasoningStep]) -> ReasoningChainValidation:
     """Validate reasoning chain"""
     errors = []
     warnings = []
     total_confidence = sum(s.confidence for s in steps)
     avg_confidence = total_confidence / len(steps) if steps else 0.0
-    
+
     for i, step in enumerate(steps):
         if step.stepNumber != i + 1:
             warnings.append(f"Step {i+1} numbering mismatch")
         if step.confidence < 0.5:
             warnings.append(f"Step {step.stepNumber} low confidence")
-    
-    is_valid = len(errors) == 0 and avg_confidence >= VERL_CONFIDENCE_THRESHOLD
-    
+
+    is_valid = len(errors) == 0 and avg_confidence >= RLCS_CONFIDENCE_THRESHOLD
+
     return ReasoningChainValidation(
         isValid=is_valid,
         score=avg_confidence,
@@ -499,27 +499,27 @@ async def verl_validate_reasoning_chain(steps: List[ReasoningStep]) -> Reasoning
         warnings=warnings
     )
 
-async def verl_evaluate_confidence(content: str, context: str) -> ConfidenceScore:
+async def rlcs_evaluate_confidence(content: str, context: str) -> ConfidenceScore:
     """Evaluate confidence"""
     factors = {
         "content_length": min(1.0, len(content) / 500),
         "has_context": 0.8 if context else 0.3,
         "structure": 0.7 if any(m in content for m in ['\n', '.']) else 0.3
     }
-    
+
     score = sum(factors.values()) / len(factors)
-    
+
     return ConfidenceScore(
         score=score,
         factors=factors,
         reasoning=f"Evaluated {len(factors)} factors"
     )
 
-async def verl_verify_facts(facts: List[str], source: str) -> FactCheckResult:
+async def rlcs_verify_facts(facts: List[str], source: str) -> FactCheckResult:
     """Verify facts"""
     verified = sum(1 for f in facts if any(p in f.lower() for p in ['http', 'according to']))
     unreliable = [f for f in facts if len(f) < 20]
-    
+
     return FactCheckResult(
         verifiedCount=verified,
         totalCount=len(facts),
@@ -527,15 +527,15 @@ async def verl_verify_facts(facts: List[str], source: str) -> FactCheckResult:
         verificationScore=verified / len(facts) if facts else 0.0
     )
 
-async def verl_check_consistency(statements: List[str]) -> ConsistencyCheckResult:
+async def rlcs_check_consistency(statements: List[str]) -> ConsistencyCheckResult:
     """Check consistency"""
     contradictions = []
-    
+
     for i, stmt1 in enumerate(statements):
         for stmt2 in statements[i+1:]:
             if "not" in stmt1 and stmt1.replace("not", "").strip() in stmt2:
                 contradictions.append(f"Contradiction: '{stmt1}' vs '{stmt2}'")
-    
+
     return ConsistencyCheckResult(
         isConsistent=len(contradictions) == 0,
         score=1.0 - (len(contradictions) / max(1, len(statements))),
@@ -546,7 +546,7 @@ async def verl_check_consistency(statements: List[str]) -> ConsistencyCheckResul
 if __name__ == "__main__":
     logger.info(f"Starting Lightning Server on port {LIGHTNING_PORT}")
     logger.info(f"Agent Lightning Available: {AGENT_LIGHTNING_AVAILABLE}")
-    logger.info(f"APO Enabled: {APO_ENABLED}, VERL Enabled: {VERL_ENABLED}")
+    logger.info(f"RMPT Enabled: {RMPT_ENABLED}, RLCS Enabled: {RLCS_ENABLED}")
     logger.info(f"Dashboard Available: {dashboard_path.exists()}")
     
     if dashboard_path.exists():

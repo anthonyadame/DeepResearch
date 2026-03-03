@@ -16,14 +16,14 @@ namespace DeepResearchAgent.Tests.WorkflowServices;
 public class ResearcherWorkflowServiceTests
 {
     private readonly Mock<IMasterWorkflowService> _mockMasterWorkflow;
-    private readonly Mock<ILightningVERLService> _mockVerlService;
+    private readonly Mock<ILightningRLCSService> _mockVerlService;
     private readonly Mock<ILogger<ResearcherWorkflowService>> _mockLogger;
     private readonly ResearcherWorkflowService _researcherWorkflowService;
 
     public ResearcherWorkflowServiceTests()
     {
         _mockMasterWorkflow = new Mock<IMasterWorkflowService>();
-        _mockVerlService = new Mock<ILightningVERLService>();
+        _mockVerlService = new Mock<ILightningRLCSService>();
         _mockLogger = new Mock<ILogger<ResearcherWorkflowService>>();
 
         _researcherWorkflowService = new ResearcherWorkflowService(

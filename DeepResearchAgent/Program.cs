@@ -15,7 +15,7 @@ var (
     searxngBaseUrl,
     crawl4aiBaseUrl,
     lightningServerUrl,
-    apoConfig,
+    rmptConfig,
     vectorDbEnabled,
     qdrantBaseUrl,
     qdrantCollectionName,
@@ -30,7 +30,7 @@ PrintConfigurationSummary(
     searxngBaseUrl,
     crawl4aiBaseUrl,
     lightningServerUrl,
-    apoConfig,
+    rmptConfig,
     vectorDbEnabled,
     qdrantBaseUrl,
     embeddingModel);
@@ -54,7 +54,7 @@ static void PrintConfigurationSummary(
     string searxngBaseUrl,
     string crawl4aiBaseUrl,
     string lightningServerUrl,
-    LightningAPOConfig apoConfig,
+    LightningRMPTConfig rmptConfig,
     bool vectorDbEnabled,
     string qdrantBaseUrl,
     string embeddingModel)
@@ -73,12 +73,12 @@ static void PrintConfigurationSummary(
     }
     Console.WriteLine($"✓ Agent-Lightning integration configured ({lightningServerUrl})");
 
-    // Print APO configuration - Review the Roadmap for the latest APO features and configuration options
-    //Console.WriteLine($"✓ APO (Automatic Performance Optimization) enabled - Strategy: {apoConfig.Strategy}");
-    //Console.WriteLine($"✓ APO Resource Limits - MaxConcurrent: {apoConfig.ResourceLimits.MaxConcurrentTasks}, Timeout: {apoConfig.ResourceLimits.TaskTimeoutSeconds}s");
-    //if (apoConfig.AutoScaling.Enabled)
+    // Print RMPT configuration - Review the Roadmap for the latest RMPT features and configuration options
+    //Console.WriteLine($"✓ RMPT (Resource Management Performance Tuning) enabled - Strategy: {rmptConfig.Strategy}");
+    //Console.WriteLine($"✓ RMPT Resource Limits - MaxConcurrent: {rmptConfig.ResourceLimits.MaxConcurrentTasks}, Timeout: {rmptConfig.ResourceLimits.TaskTimeoutSeconds}s");
+    //if (rmptConfig.AutoScaling.Enabled)
     //{
-    //    Console.WriteLine($"✓ APO Auto-Scaling enabled - {apoConfig.AutoScaling.MinInstances}-{apoConfig.AutoScaling.MaxInstances} instances");
+    //    Console.WriteLine($"✓ RMPT Auto-Scaling enabled - {rmptConfig.AutoScaling.MinInstances}-{rmptConfig.AutoScaling.MaxInstances} instances");
     //}
-    //Console.WriteLine("✓ VERL (Verification and Reasoning Layer) enabled\n");
+    //Console.WriteLine("✓ RLCS (Reasoning Layer Confidence Scoring) enabled\n");
 }

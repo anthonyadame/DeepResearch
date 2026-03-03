@@ -1,10 +1,10 @@
 # Core Agent Lightning installation
 agentlightning>=0.2.0
 
-# APO (Agent Performance Optimization) support
+# APO (Automatic Prompt Optimization) support
 agentlightning[apo]
 
-# VERL (Verification and Reasoning Layer) support - Manual installation recommended
+# VERL (Volcano Engine Reinforcement Learning) support - Manual installation recommended
 agentlightning[verl]
 
 # PyTorch dependencies for VERL (CUDA 12.8 compatible)

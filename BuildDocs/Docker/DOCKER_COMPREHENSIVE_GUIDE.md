@@ -56,7 +56,7 @@ DeepResearch uses Docker for containerized deployment across two primary stacks:
 │  Infrastructure:                 │                          │
 │  ┌──────────────────┐  ┌────────▼──────┐                 │
 │  │  Ollama (LLM)    │  │  Lightning     │                 │
-│  │   (11434)        │  │  Server (APO)  │                 │
+│  │   (11434)        │  │  Server        │                 │
 │  └──────────────────┘  │   (8090)       │                 │
 │  ┌──────────────────┐  └───────────────┘                 │
 │  │   Crawl4AI       │  ┌──────────────────┐               │
@@ -442,7 +442,7 @@ docker-compose -f Docker/Observability/docker-compose-monitoring.yml ps
 | Agent | deep-research-agent | - | Console workflow interface |
 | Ollama | ollama:latest | 11434 | Local LLM inference |
 | Crawl4AI | unclecode/crawl4ai | 11235 | Web scraping service |
-| Lightning | deepresearch-lightning-server | 8090 | Agent orchestration (APO/VERL) |
+| Lightning | deepresearch-lightning-server | 8090 | Agent orchestration |
 | Redis | redis:7-alpine | 6379 | Distributed cache |
 | Qdrant | qdrant:latest | 6333 | Vector database |
 | InfluxDB | influxdb:2.7 | 8086 | Time-series metrics |
