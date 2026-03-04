@@ -2,6 +2,7 @@ using DeepResearchAgent.Configuration;
 using DeepResearchAgent.Services;
 using DeepResearchAgent.Services.Checkpointing;
 using DeepResearch.Api.Services.Auth;
+using DeepResearch.Api.Services.Chat;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
@@ -34,6 +35,9 @@ public class Startup
     /// </summary>
     public void ConfigureServices(IServiceCollection services)
     {
+        // Add Chat Services for WebUI
+        services.AddSingleton<IChatHistoryService, InMemoryChatHistoryService>();
+
         // Add Core Services
         services.AddScoped<IWorkflowPauseResumeService, WorkflowPauseResumeService>();
         services.AddCheckpointService(options =>
@@ -192,7 +196,7 @@ public class Startup
                 {
                     if (context.Exception is SecurityTokenExpiredException)
                     {
-                        context.Response.Headers.Add("Token-Expired", "true");
+                        context.Response.Headers["Token-Expired"] = "true";
                     }
                     return Task.CompletedTask;
                 }

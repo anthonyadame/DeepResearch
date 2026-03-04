@@ -3,6 +3,7 @@ using DeepResearchAgent.Model.Api;
 using DeepResearchAgent.Services;
 using DeepResearchAgent.Services.Checkpointing;
 using DeepResearch.Api.Models;
+using DeepResearchAgent.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -11,6 +12,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json;
 
 namespace DeepResearch.Api.Controllers;
 
@@ -353,4 +355,179 @@ public class WorkflowsController : ControllerBase
             });
         }
     }
+
+    /// <summary>
+    /// Stream MasterWorkflow execution with real-time progress updates.
+    /// Returns Server-Sent Events (SSE) stream of StreamState objects.
+    /// This endpoint does NOT require authentication for WebUI integration.
+    /// </summary>
+    [HttpPost("master/stream")]
+    [AllowAnonymous]
+    [Consumes("application/json")]
+    [Produces("text/event-stream")]
+    [ProducesResponseType(typeof(StreamState), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponseDto), StatusCodes.Status400BadRequest)]
+    public async Task StreamMasterWorkflow(
+        [FromBody] MasterWorkflowStreamRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request?.UserQuery))
+        {
+            Response.StatusCode = StatusCodes.Status400BadRequest;
+            await Response.WriteAsJsonAsync(new { Message = "UserQuery is required", Code = "VALIDATION_ERROR" }, cancellationToken);
+            return;
+        }
+
+        Response.ContentType = "text/event-stream";
+        Response.Headers["Cache-Control"] = "no-cache";
+        Response.Headers["Connection"] = "keep-alive";
+        Response.Headers["X-Accel-Buffering"] = "no";
+
+        try
+        {
+            _logger.LogInformation("MasterWorkflow stream endpoint called for query: {Query}", request.UserQuery);
+
+            // Simulate streaming workflow progress
+            // In a real implementation, this would integrate with the actual MasterWorkflow
+            var researchId = Guid.NewGuid().ToString();
+
+            // Phase 1: Brief Preview
+            var state1 = new StreamState
+            {
+                Status = "brief_preview",
+                ResearchId = researchId,
+                UserQuery = request.UserQuery,
+                BriefPreview = "Analyzing your research query and preparing initial brief...",
+                ResearchBrief = string.Empty,
+                DraftReport = string.Empty,
+                RefinedSummary = string.Empty,
+                FinalReport = string.Empty,
+                SupervisorUpdate = string.Empty,
+                SupervisorUpdateCount = 0
+            };
+            await WriteStreamState(state1, cancellationToken);
+            await Task.Delay(500, cancellationToken);
+
+            // Phase 2: Research Brief
+            var state2 = new StreamState
+            {
+                Status = "research_brief",
+                ResearchId = researchId,
+                UserQuery = request.UserQuery,
+                BriefPreview = state1.BriefPreview,
+                ResearchBrief = $"Research Brief: Investigating '{request.UserQuery}'\n\nThis is a simulated research brief. In a full implementation, this would contain the actual research findings from the MasterWorkflow.",
+                DraftReport = string.Empty,
+                RefinedSummary = string.Empty,
+                FinalReport = string.Empty,
+                SupervisorUpdate = string.Empty,
+                SupervisorUpdateCount = 0
+            };
+            await WriteStreamState(state2, cancellationToken);
+            await Task.Delay(500, cancellationToken);
+
+            // Phase 3: Draft Report
+            var state3 = new StreamState
+            {
+                Status = "draft_report",
+                ResearchId = researchId,
+                UserQuery = request.UserQuery,
+                BriefPreview = state1.BriefPreview,
+                ResearchBrief = state2.ResearchBrief,
+                DraftReport = "Draft Report:\n\nThis is a simulated draft report based on the research brief.",
+                RefinedSummary = string.Empty,
+                FinalReport = string.Empty,
+                SupervisorUpdate = string.Empty,
+                SupervisorUpdateCount = 0
+            };
+            await WriteStreamState(state3, cancellationToken);
+            await Task.Delay(500, cancellationToken);
+
+            // Phase 4: Refined Summary
+            var state4 = new StreamState
+            {
+                Status = "refined_summary",
+                ResearchId = researchId,
+                UserQuery = request.UserQuery,
+                BriefPreview = state1.BriefPreview,
+                ResearchBrief = state2.ResearchBrief,
+                DraftReport = state3.DraftReport,
+                RefinedSummary = "Refined Summary:\n\nThis is a simulated refined summary after supervisor review.",
+                FinalReport = string.Empty,
+                SupervisorUpdate = "Supervisor review completed",
+                SupervisorUpdateCount = 1
+            };
+            await WriteStreamState(state4, cancellationToken);
+            await Task.Delay(500, cancellationToken);
+
+            // Phase 5: Final Report
+            var state5 = new StreamState
+            {
+                Status = "final_report",
+                ResearchId = researchId,
+                UserQuery = request.UserQuery,
+                BriefPreview = state1.BriefPreview,
+                ResearchBrief = state2.ResearchBrief,
+                DraftReport = state3.DraftReport,
+                RefinedSummary = state4.RefinedSummary,
+                FinalReport = $"# Final Research Report: {request.UserQuery}\n\n## Executive Summary\n\nThis is a simulated final report. In a full implementation, this would be the polished output from the complete MasterWorkflow.\n\n## Key Findings\n\n1. Finding 1 (simulated)\n2. Finding 2 (simulated)\n3. Finding 3 (simulated)\n\n## Conclusion\n\nThis concludes the simulated research process.",
+                SupervisorUpdate = "Final report complete",
+                SupervisorUpdateCount = 1
+            };
+            await WriteStreamState(state5, cancellationToken);
+
+            // Completion
+            var completionState = new StreamState
+            {
+                Status = "completed",
+                ResearchId = researchId,
+                UserQuery = request.UserQuery,
+                BriefPreview = state1.BriefPreview,
+                ResearchBrief = state2.ResearchBrief,
+                DraftReport = state3.DraftReport,
+                RefinedSummary = state4.RefinedSummary,
+                FinalReport = state5.FinalReport,
+                SupervisorUpdate = "Research complete",
+                SupervisorUpdateCount = 1
+            };
+            await WriteStreamState(completionState, cancellationToken);
+
+            await Response.WriteAsync("data: [DONE]\n\n", cancellationToken);
+            await Response.Body.FlushAsync(cancellationToken);
+
+            _logger.LogInformation("MasterWorkflow stream completed for query: {Query}", request.UserQuery);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in MasterWorkflow stream endpoint");
+            try
+            {
+                await Response.WriteAsync($"data: {{\"error\": \"{ex.Message}\"}}\n\n", cancellationToken);
+                await Response.Body.FlushAsync(cancellationToken);
+            }
+            catch
+            {
+                // Ignore errors writing error response
+            }
+        }
+    }
+
+    private async Task WriteStreamState(StreamState state, CancellationToken cancellationToken)
+    {
+        var json = JsonSerializer.Serialize(state, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = false
+        });
+
+        await Response.WriteAsync($"data: {json}\n\n", cancellationToken);
+        await Response.Body.FlushAsync(cancellationToken);
+    }
+}
+
+/// <summary>
+/// Request for MasterWorkflow streaming
+/// </summary>
+public record MasterWorkflowStreamRequest
+{
+    public required string UserQuery { get; init; }
 }
