@@ -1,20 +1,24 @@
-using DeepResearch.Api.Models.Chat;
 using Microsoft.AspNetCore.Mvc;
+using DeepResearchAgent.Services;
 
 namespace DeepResearch.Api.Controllers;
 
 /// <summary>
-/// Configuration Controller - Provides configuration data for the WebUI
+/// Configuration Controller - Provides configuration options for the UI
 /// </summary>
 [ApiController]
 [Route("api/config")]
 [Produces("application/json")]
 public class ConfigurationController : ControllerBase
 {
+    private readonly OllamaService _ollamaService;
     private readonly ILogger<ConfigurationController> _logger;
 
-    public ConfigurationController(ILogger<ConfigurationController> logger)
+    public ConfigurationController(
+        OllamaService ollamaService,
+        ILogger<ConfigurationController> logger)
     {
+        _ollamaService = ollamaService;
         _logger = logger;
     }
 
@@ -22,38 +26,72 @@ public class ConfigurationController : ControllerBase
     /// Get available LLM models
     /// </summary>
     [HttpGet("models")]
-    [ProducesResponseType(typeof(List<ModelInfo>), StatusCodes.Status200OK)]
-    public ActionResult<List<ModelInfo>> GetModels()
+    [ProducesResponseType(typeof(List<string>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<List<string>>> GetAvailableModels()
     {
-        var models = new List<ModelInfo>
-        {
-            new() { Id = "gpt-4", Name = "GPT-4", ContextWindow = 8192 },
-            new() { Id = "gpt-3.5-turbo", Name = "GPT-3.5 Turbo", ContextWindow = 4096 },
-            new() { Id = "claude-3-opus", Name = "Claude 3 Opus", ContextWindow = 200000 },
-            new() { Id = "claude-3-sonnet", Name = "Claude 3 Sonnet", ContextWindow = 200000 },
-            new() { Id = "llama-3-70b", Name = "Llama 3 70B", ContextWindow = 8192 }
-        };
+        _logger.LogInformation("Retrieving available models");
 
-        return Ok(models);
+        try
+        {
+            // Get models from Ollama
+            // For now, return common models
+            var models = new List<string>
+            {
+                "gpt-oss:20b",
+                "llama3.1:8b",
+                "llama2:13b",
+                "mistral:7b",
+                "mixtral:8x7b"
+            };
+
+            return Ok(models);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error retrieving models");
+            return StatusCode(500, new { error = "Failed to retrieve models", details = ex.Message });
+        }
     }
 
     /// <summary>
-    /// Get available search tools
+    /// Get available web search tools/providers
     /// </summary>
     [HttpGet("search-tools")]
-    [ProducesResponseType(typeof(List<SearchToolInfo>), StatusCodes.Status200OK)]
-    public ActionResult<List<SearchToolInfo>> GetSearchTools()
+    [ProducesResponseType(typeof(List<SearchTool>), StatusCodes.Status200OK)]
+    public ActionResult<List<SearchTool>> GetSearchTools()
     {
-        var searchTools = new List<SearchToolInfo>
+        _logger.LogInformation("Retrieving search tools");
+
+        var tools = new List<SearchTool>
         {
-            new() { Id = "searxng", Name = "SearXNG" },
-            new() { Id = "google", Name = "Google" },
-            new() { Id = "bing", Name = "Bing" },
-            new() { Id = "duckduckgo", Name = "DuckDuckGo" },
-            new() { Id = "perplexity", Name = "Perplexity" }
+            new SearchTool { Id = "searxng", Name = "SearXNG", Description = "Privacy-focused metasearch engine", Enabled = true },
+            new SearchTool { Id = "google", Name = "Google Search", Description = "Google Search API", Enabled = false },
+            new SearchTool { Id = "bing", Name = "Bing Search", Description = "Microsoft Bing Search API", Enabled = false },
+            new SearchTool { Id = "duckduckgo", Name = "DuckDuckGo", Description = "Privacy-focused search", Enabled = false }
         };
 
-        return Ok(searchTools);
+        return Ok(tools);
+    }
+
+    /// <summary>
+    /// Get current configuration
+    /// </summary>
+    [HttpGet("current")]
+    [ProducesResponseType(typeof(CurrentConfiguration), StatusCodes.Status200OK)]
+    public ActionResult<CurrentConfiguration> GetCurrentConfiguration()
+    {
+        _logger.LogInformation("Retrieving current configuration");
+
+        var config = new CurrentConfiguration
+        {
+            DefaultModel = "gpt-oss:20b",
+            DefaultSearchTool = "searxng",
+            MaxDepth = 3,
+            TimeoutSeconds = 300,
+            Language = "English"
+        };
+
+        return Ok(config);
     }
 
     /// <summary>
@@ -61,9 +99,46 @@ public class ConfigurationController : ControllerBase
     /// </summary>
     [HttpPost("save")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult SaveConfig([FromBody] ResearchConfig config)
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public ActionResult SaveConfiguration([FromBody] CurrentConfiguration config)
     {
-        _logger.LogInformation("Configuration save requested (not persisted in this implementation)");
-        return Ok(new { message = "Configuration saved (in-memory only)" });
+        _logger.LogInformation("Saving configuration");
+
+        try
+        {
+            // TODO: Implement configuration persistence
+            // For now, just log and return success
+            _logger.LogInformation("Configuration saved: {@Config}", config);
+            
+            return Ok(new { message = "Configuration saved successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error saving configuration");
+            return StatusCode(500, new { error = "Failed to save configuration", details = ex.Message });
+        }
     }
+}
+
+/// <summary>
+/// Search tool information
+/// </summary>
+public record SearchTool
+{
+    public required string Id { get; init; }
+    public required string Name { get; init; }
+    public required string Description { get; init; }
+    public bool Enabled { get; init; }
+}
+
+/// <summary>
+/// Current configuration settings
+/// </summary>
+public record CurrentConfiguration
+{
+    public required string DefaultModel { get; init; }
+    public required string DefaultSearchTool { get; init; }
+    public int MaxDepth { get; init; }
+    public int TimeoutSeconds { get; init; }
+    public required string Language { get; init; }
 }

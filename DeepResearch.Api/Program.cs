@@ -14,3 +14,6 @@ var app = builder.Build();
 startup.Configure(app, app.Environment, app.Services.GetRequiredService<ILogger<Startup>>());
 
 app.Run();
+
+// Make Program class accessible for integration tests
+public partial class Program { }
