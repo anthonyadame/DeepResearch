@@ -1,0 +1,22 @@
+# Custom vLLM image with updated transformers for Qwen 3.5 support
+# Using nightly build which has better support for Qwen 3.5
+FROM vllm/vllm-openai:latest
+#FROM vllm/vllm-openai:cu130-nightly
+
+# Switch to root to install updates
+USER root
+
+# Install git (required for pip install from GitHub)
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends git && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Upgrade pip and install latest transformers from GitHub to support Qwen 3.5
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir --upgrade git+https://github.com/huggingface/transformers.git
+
+# Ensure we have the latest vLLM dependencies
+RUN pip install --no-cache-dir --upgrade vllm
+
+# The base image's entrypoint and cmd will be inherited

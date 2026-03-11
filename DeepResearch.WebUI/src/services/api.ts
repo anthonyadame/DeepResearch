@@ -158,6 +158,8 @@ class ApiService {
     const abortController = new AbortController()
     const url = `${this.baseURL}/chat/sessions/${sessionId}/stream`
 
+    console.log('[ApiService] Starting stream to:', url)
+
     fetch(url, {
       method: 'POST',
       headers: {
@@ -167,47 +169,73 @@ class ApiService {
       signal: abortController.signal,
     })
       .then(async (response) => {
+        console.log('[ApiService] Stream response status:', response.status)
+
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
+          const errorText = await response.text().catch(() => `HTTP ${response.status}`)
+          console.error('[ApiService] Stream request failed:', errorText)
+          throw new Error(`HTTP error! status: ${response.status}: ${errorText}`)
         }
 
         const reader = response.body?.getReader()
         if (!reader) {
+          console.error('[ApiService] Response body is not readable')
           throw new Error('Response body is not readable')
         }
 
         const decoder = new TextDecoder()
+        let buffer = ''
 
         try {
           while (true) {
             const { done, value } = await reader.read()
 
             if (done) {
+              console.log('[ApiService] Stream completed (done=true)')
               onComplete()
               break
             }
 
-            const chunk = decoder.decode(value)
-            const lines = chunk.split('\n')
+            const chunk = decoder.decode(value, { stream: true })
+            buffer += chunk
+            const lines = buffer.split('\n')
+
+            // Keep the last incomplete line in buffer
+            buffer = lines.pop() || ''
 
             for (const line of lines) {
               if (line.startsWith('data: ')) {
                 const data = line.substring(6).trim()
 
+                console.log('[ApiService] Received data:', data.substring(0, 100) + (data.length > 100 ? '...' : ''))
+
+                if (!data) {
+                  continue
+                }
+
                 if (data === '[DONE]') {
+                  console.log('[ApiService] Stream received [DONE]')
                   onComplete()
                   return
                 } else if (data === '[CANCELLED]') {
+                  console.warn('[ApiService] Stream was cancelled')
                   onError(new Error('Stream was cancelled'))
                   return
-                } else if (data.startsWith('{') && data.includes('error')) {
+                } else if (data.startsWith('{')) {
                   try {
-                    const errorObj = JSON.parse(data)
-                    onError(new Error(errorObj.error))
-                  } catch {
+                    const obj = JSON.parse(data)
+                    if (obj.error) {
+                      console.error('[ApiService] Received error object:', obj)
+                      onError(new Error(obj.error))
+                      return
+                    }
+                    // Pass the raw JSON string to the callback
+                    onUpdate(data)
+                  } catch (parseError) {
+                    console.warn('[ApiService] Failed to parse data:', data, parseError)
                     onUpdate(data)
                   }
-                } else if (data) {
+                } else {
                   onUpdate(data)
                 }
               }
@@ -215,19 +243,23 @@ class ApiService {
           }
         } catch (error) {
           if (error instanceof Error && error.name === 'AbortError') {
-            console.log('Stream aborted by user')
+            console.log('[ApiService] Stream aborted by user')
           } else {
-            onError(error instanceof Error ? error : new Error('Stream error'))
+            const errorMessage = error instanceof Error ? error.message : String(error)
+            console.error('[ApiService] Stream error:', errorMessage)
+            onError(error instanceof Error ? error : new Error('Stream error: ' + String(error)))
           }
         } finally {
           reader.releaseLock()
         }
       })
       .catch((error) => {
-        if (error.name === 'AbortError') {
-          console.log('Fetch aborted')
+        if (error instanceof Error && error.name === 'AbortError') {
+          console.log('[ApiService] Fetch aborted')
         } else {
-          onError(error)
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          console.error('[ApiService] Fetch error:', errorMessage)
+          onError(error instanceof Error ? error : new Error('Fetch error: ' + String(error)))
         }
       })
 
@@ -237,6 +269,20 @@ class ApiService {
   async getChatHistory(sessionId: string): Promise<ChatMessage[]> {
     const response = await this.client.get(`/chat/sessions/${sessionId}/history`)
     return response.data
+  }
+
+  /**
+   * Check if a session exists without loading full history
+   * @param sessionId - The session ID to check
+   * @returns true if session exists, false otherwise
+   */
+  async sessionExists(sessionId: string): Promise<boolean> {
+    try {
+      const response = await this.client.get(`/chat/sessions/${sessionId}`)
+      return response.status === 200
+    } catch (error) {
+      return false
+    }
   }
 
   async createSession(title?: string): Promise<ChatSession> {

@@ -42,7 +42,7 @@ export async function executeStep(
 
 export async function healthCheck(): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE.replace('/chat', '')}/health`)
+    const response = await fetch(`http://localhost:5000/health`)
     return response.ok
   } catch {
     return false

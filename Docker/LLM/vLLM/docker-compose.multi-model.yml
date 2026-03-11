@@ -1,0 +1,191 @@
+version: '3.8'
+
+services:
+  # ========== vLLM Container 1: Qwen3.5-2B ==========
+  vllm-qwen35-2b:
+    build:
+      context: .
+      dockerfile: Dockerfile.vllm-qwen35
+    image: lightning-vllm-qwen35:latest
+    container_name: lightning-vllm-qwen35-2b
+    ports:
+      - "8001:8000"  # Expose on port 8001
+    environment:
+      - MODEL_NAME=Qwen/Qwen3.5-2B
+      - GPU_MEMORY_UTILIZATION=0.85
+      - MAX_MODEL_LEN=32768
+      - MAX_NUM_SEQS=256
+      - TENSOR_PARALLEL_SIZE=1
+      - TRUST_REMOTE_CODE=true
+      - ENABLE_PREFIX_CACHING=true
+      - CUDA_VISIBLE_DEVICES=0  # Ensure only GPU 0 is used for this container
+    command:
+      - --model
+      - Qwen/Qwen3.5-2B
+      - --gpu-memory-utilization
+      - "0.85"
+      - --max-model-len
+      - "32768"
+      - --max-num-seqs
+      - "256"
+      - --enable-prefix-caching
+      - --trust-remote-code
+      - --reasoning-parser
+      - qwen3
+      - --port
+      - "8000"
+      - --host
+      - "0.0.0.0"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']  # GPU 0
+              capabilities: [gpu]
+    volumes:
+      - vllm-cache:/root/.cache/huggingface
+    networks:
+      - lightning-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 300s  # Qwen3.5-2B takes ~5 min to load
+    restart: unless-stopped
+    profiles:
+      - qwen35
+      - all
+
+  # ========== vLLM Container 2: Qwen3.5-4B ==========
+  vllm-qwen35-4b:
+    build:
+      context: .
+      dockerfile: Dockerfile.vllm-qwen35
+    image: lightning-vllm-qwen35:latest
+    container_name: lightning-vllm-qwen35-4b
+    ports:
+      - "8002:8000"  # Expose on port 8002
+    environment:
+      - MODEL_NAME=Qwen/Qwen3.5-4B
+      - GPU_MEMORY_UTILIZATION=0.85
+      - MAX_MODEL_LEN=32768
+      - MAX_NUM_SEQS=256
+      - TENSOR_PARALLEL_SIZE=1
+      - TRUST_REMOTE_CODE=true
+      - ENABLE_PREFIX_CACHING=true
+      - CUDA_VISIBLE_DEVICES=1
+    command:
+      - --model
+      - Qwen/Qwen3.5-4B
+      - --gpu-memory-utilization
+      - "0.85"
+      - --max-model-len
+      - "32768"
+      - --max-num-seqs
+      - "256"
+      - --enable-prefix-caching
+      - --trust-remote-code
+      - --reasoning-parser
+      - qwen3
+      - --port
+      - "8000"
+      - --host
+      - "0.0.0.0"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1']  # GPU 1
+              capabilities: [gpu]
+    volumes:
+      - vllm-cache:/root/.cache/huggingface
+    networks:
+      - lightning-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 360s  # Qwen3.5-4B takes ~6 min to load
+    restart: unless-stopped
+    depends_on:
+      vllm-qwen35-2b:
+        condition: service_healthy  # Sequential loading: wait for 2B to be ready
+    profiles:
+      - qwen35
+      - all
+
+  # ========== LiteLLM Proxy (Router) ==========
+  litellm-proxy:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: lightning-litellm
+    ports:
+      - "4000:4000"  # API
+      - "4001:4001"  # Admin UI
+    environment:
+      - LITELLM_MASTER_KEY=sk-1234  # Change in production!
+      - DATABASE_URL=postgresql://litellm:litellm@postgres:5432/litellm
+      - LITELLM_LOG=INFO
+    command:
+      - --config
+      - /app/config.yaml
+      - --port
+      - "4000"
+      - --num_workers
+      - "4"
+    volumes:
+      - ./litellm-multi-model.yaml:/app/config.yaml:ro
+    networks:
+      - lightning-net
+    depends_on:
+      vllm-qwen35-2b:
+        condition: service_healthy
+      vllm-qwen35-4b:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-H", "Authorization: Bearer sk-1234", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    restart: unless-stopped
+    profiles:
+      - qwen35
+      - all
+
+  # ========== PostgreSQL (LiteLLM Logging) ==========
+  postgres:
+    image: postgres:16-alpine
+    container_name: lightning-postgres
+    environment:
+      - POSTGRES_USER=litellm
+      - POSTGRES_PASSWORD=litellm
+      - POSTGRES_DB=litellm
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - lightning-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    profiles:
+      - qwen35
+      - all
+
+volumes:
+  vllm-cache:
+    driver: local
+  postgres-data:
+    driver: local
+
+networks:
+  lightning-net:
+    driver: bridge

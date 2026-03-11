@@ -1,0 +1,456 @@
+# Lightning Server with MongoDB - Docker Compose Configuration
+# This configuration sets up a complete Lightning Server stack with:
+# - MongoDB Replica Set (3 nodes)
+# - Lightning Server (with MongoDB support)
+# - Optional: Prometheus + Grafana for monitoring
+
+version: '3.8'
+
+services:
+  # ========== MongoDB Replica Set ==========
+  mongo1:
+    image: mongo:7.0
+    container_name: lightning-mongo1
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo1-data:/data/db
+      - mongo1-config:/data/configdb
+    networks:
+      - lightning-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  mongo2:
+    image: mongo:7.0
+    container_name: lightning-mongo2
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo2-data:/data/db
+      - mongo2-config:/data/configdb
+    networks:
+      - lightning-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  mongo3:
+    image: mongo:7.0
+    container_name: lightning-mongo3
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongo3-data:/data/db
+      - mongo3-config:/data/configdb
+    networks:
+      - lightning-net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  # MongoDB Replica Set Initialization
+  mongo-init:
+    image: mongo:7.0
+    container_name: lightning-mongo-init
+    depends_on:
+      mongo1:
+        condition: service_healthy
+      mongo2:
+        condition: service_healthy
+      mongo3:
+        condition: service_healthy
+    networks:
+      - lightning-net
+    restart: "no"
+    entrypoint: >
+      bash -c "
+        echo 'Waiting for MongoDB instances to be ready...';
+        sleep 5;
+        echo 'Initiating replica set...';
+        mongosh --host mongo1:27017 --eval '
+          rs.status().ok || rs.initiate({
+            _id: \"rs0\",
+            members: [
+              {_id: 0, host: \"mongo1:27017\", priority: 2},
+              {_id: 1, host: \"mongo2:27017\", priority: 1},
+              {_id: 2, host: \"mongo3:27017\", priority: 1}
+            ]
+          })
+        ';
+        echo 'Waiting for replica set to stabilize...';
+        sleep 10;
+        mongosh --host mongo1:27017 --eval 'rs.status()';
+        echo 'Replica set initialized successfully!';
+      "
+
+  # ========== Lightning Server ==========
+  lightning-server:
+    build:
+      context: ../..
+      dockerfile: Docker/lightning-server/Dockerfile
+      target: base  # Change to 'cuda' for GPU support
+    container_name: lightning-server
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+    environment:
+      # MongoDB Configuration
+      - MONGO_URI=mongodb://mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=rs0
+      - MONGO_DATABASE=agentlightning
+      - MONGO_PARTITION_ID=lightning-server-1
+      - MONGO_MAX_POOL_SIZE=100
+      - MONGO_MIN_POOL_SIZE=10
+
+      # Server Configuration
+      - LIGHTNING_PORT=9090
+      - PROMETHEUS_PORT=9091
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=development
+      - DEBUG=false
+
+      # CORS
+      - CORS_ALLOW_ORIGINS=*
+
+      # Metrics & Telemetry
+      - PROMETHEUS_METRICS_ENABLED=true
+      - OTEL_ENABLED=true
+      - OTEL_OTLP_ENDPOINT=http://lightning-server:9090/v1/traces
+      - OTEL_EXPORT_TIMEOUT=30
+      - OTEL_CONSOLE_EXPORT=false
+      - OTEL_SERVICE_NAME=lightning-server
+
+      # LLM Configuration (vLLM + LiteLLM Proxy)
+      - VLLM_API_BASE=http://vllm-server:8000/v1
+      - VLLM_MODEL_NAME=llama-3.1-8b
+      - VLLM_API_KEY=EMPTY
+      - LLMPROXY_HOST=litellm-proxy
+      - LLMPROXY_PORT=4000
+      - LITELLM_API_KEY=sk-1234
+
+      # External LLM APIs (optional)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+      # Legacy RMPT/RLCS (backward compatibility)
+      - RMPT_ENABLED=true
+      - RLCS_ENABLED=true
+    ports:
+      - "9090:9090"  # Main API
+      - "9091:9091"  # Prometheus metrics
+    volumes:
+      - ./server.py:/app/server.py  # For development - remove in production
+      - ./config.py:/app/config.py  # For development - remove in production
+    networks:
+      - lightning-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  # ========== vLLM Server (GPU required) ==========
+  vllm-server:
+    image: vllm/vllm-openai:v0.6.3.post1
+    container_name: lightning-vllm
+    environment:
+      # Model configuration
+      - MODEL_NAME=meta-llama/Llama-3.1-8B-Instruct
+      - TENSOR_PARALLEL_SIZE=1
+      - GPU_MEMORY_UTILIZATION=0.9
+      - MAX_MODEL_LEN=8192
+      - MAX_NUM_SEQS=256
+
+      # API configuration
+      - PORT=8000
+      - HOST=0.0.0.0
+      - API_KEY=EMPTY
+
+      # Performance tuning
+      - ENABLE_PREFIX_CACHING=true
+      - DISABLE_LOG_STATS=false
+      - DISABLE_LOG_REQUESTS=false
+
+      # HuggingFace token (for gated models)
+      - HF_TOKEN=${HF_TOKEN:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - vllm-cache:/root/.cache/huggingface
+    command:
+      - --model
+      - meta-llama/Llama-3.1-8B-Instruct
+      - --tensor-parallel-size
+      - "1"
+      - --gpu-memory-utilization
+      - "0.9"
+      - --max-model-len
+      - "8192"
+      - --max-num-seqs
+      - "256"
+      - --enable-prefix-caching
+      - --port
+      - "8000"
+      - --host
+      - "0.0.0.0"
+    networks:
+      - lightning-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+    profiles:
+      - llm-serving
+      - full
+
+  # ========== LiteLLM Proxy (LLM Router) ==========
+  litellm-proxy:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: lightning-litellm
+    environment:
+      - LITELLM_MASTER_KEY=sk-1234
+      - LITELLM_LOG=INFO
+      - DATABASE_URL=postgresql://litellm:litellm@postgres:5432/litellm
+
+      # External API keys (optional)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+      # Telemetry
+      - LITELLM_MODE=PRODUCTION
+      - STORE_MODEL_IN_DB=true
+    ports:
+      - "4000:4000"  # LiteLLM proxy API
+      - "4001:4001"  # LiteLLM admin UI (optional)
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    command:
+      - --config
+      - /app/config.yaml
+      - --port
+      - "4000"
+      - --num_workers
+      - "4"
+      - --detailed_debug
+    networks:
+      - lightning-net
+    depends_on:
+      - vllm-server
+      - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    profiles:
+      - llm-serving
+      - full
+
+  # ========== PostgreSQL (for LiteLLM request logging) ==========
+  postgres:
+    image: postgres:16-alpine
+    container_name: lightning-postgres
+    environment:
+      - POSTGRES_USER=litellm
+      - POSTGRES_PASSWORD=litellm
+      - POSTGRES_DB=litellm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - lightning-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    profiles:
+      - llm-serving
+      - full
+
+  # ========== Ollama (Optional local LLM) ==========
+  ollama:
+    image: ollama/ollama:latest
+    container_name: lightning-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - lightning-net
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    profiles:
+      - ollama
+      - full
+
+  # ========== Prometheus (Optional) ==========
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: lightning-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9092:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus-alerts.yml:/etc/prometheus/prometheus-alerts.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - lightning-net
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # ========== Grafana (Optional) ==========
+  grafana:
+    image: grafana/grafana:latest
+    container_name: lightning-grafana
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SERVER_ROOT_URL=http://localhost:3000
+      - GF_INSTALL_PLUGINS=
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - lightning-net
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    profiles:
+      - monitoring
+
+  # ========== MongoDB Express (Optional - Web UI for MongoDB) ==========
+  mongo-express:
+    image: mongo-express:latest
+    container_name: lightning-mongo-express
+    environment:
+      - ME_CONFIG_MONGODB_URL=mongodb://mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=rs0
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=admin
+    ports:
+      - "8081:8081"
+    networks:
+      - lightning-net
+    depends_on:
+      - mongo1
+      - mongo2
+      - mongo3
+    restart: unless-stopped
+    profiles:
+      - debug
+
+volumes:
+  mongo1-data:
+    driver: local
+  mongo1-config:
+    driver: local
+  mongo2-data:
+    driver: local
+  mongo2-config:
+    driver: local
+  mongo3-data:
+    driver: local
+  mongo3-config:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+  vllm-cache:
+    driver: local
+  postgres-data:
+    driver: local
+  ollama-data:
+    driver: local
+
+networks:
+  lightning-net:
+    driver: bridge
+    name: lightning-network
+
+# Usage Instructions:
+# 
+# 1. Basic setup (Lightning Server + MongoDB):
+#    docker-compose up -d
+#
+# 2. With monitoring (add Prometheus + Grafana):
+#    docker-compose --profile monitoring up -d
+#
+# 3. With LLM serving (add vLLM + LiteLLM Proxy):
+#    docker-compose --profile llm-serving up -d
+#
+# 4. With Ollama (local LLM):
+#    docker-compose --profile ollama up -d
+#
+# 5. With MongoDB UI (add Mongo Express):
+#    docker-compose --profile debug up -d
+#
+# 6. Full stack (all services):
+#    docker-compose --profile full up -d
+#
+# 7. Monitoring + LLM serving:
+#    docker-compose --profile monitoring --profile llm-serving up -d
+#
+# 8. View logs:
+#    docker-compose logs -f lightning-server
+#
+# 6. Check MongoDB replica set status:
+#    docker exec -it lightning-mongo1 mongosh --eval "rs.status()"
+#
+# 7. Stop all services:
+#    docker-compose down
+#
+# 8. Stop and remove volumes (⚠️ DELETES ALL DATA):
+#    docker-compose down -v

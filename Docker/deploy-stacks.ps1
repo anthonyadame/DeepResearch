@@ -113,7 +113,20 @@ $Stacks = @{
 }
 
 $NetworkName = "deepresearch-hub"
-$ProjectRoot = Get-Location
+
+# Calculate project root based on script location (like bash version)
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot = Split-Path -Parent $ScriptDir  # Parent of Docker/ directory
+
+# Validate project structure
+if (-not (Test-Path (Join-Path $ProjectRoot "Docker") -PathType Container)) {
+    Write-Status "ERROR: Invalid project structure detected" "Error"
+    Write-Host "  Script location: $ScriptDir" -ForegroundColor Yellow
+    Write-Host "  Detected root: $ProjectRoot" -ForegroundColor Yellow
+    exit 1
+}
+
+Write-Verbose "Project Root: $ProjectRoot"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # UTILITY FUNCTIONS
@@ -526,6 +539,12 @@ function Cleanup-Stack {
 # ═══════════════════════════════════════════════════════════════════════════════
 
 Write-Header "DeepResearch Stack Manager v1.0"
+
+# Validate we're in the correct directory
+if (-not (Test-Path (Join-Path $ProjectRoot "Docker") -PathType Container)) {
+    Write-Status "ERROR: Could not detect project root. Please run from workspace root or Docker directory." "Error"
+    exit 1
+}
 
 # Check for missing compose files
 $missingFiles = Test-AllComposeFilesExist -StackFilter @($Stack)

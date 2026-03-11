@@ -308,7 +308,7 @@ public class ChatController : ControllerBase
             _logger.LogInformation("✅ [CHAT] User message stored");
 
             // Start workflow in background (don't wait for it)
-            // The UI can stream results separately via WebSocket or polling
+            // The UI can stream results separately via the /stream endpoint
             _ = Task.Run(async () =>
             {
                 try
@@ -339,7 +339,7 @@ public class ChatController : ControllerBase
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "❌ [WORKFLOW] Error in background workflow for session {SessionId}", sessionId);
-                    
+
                     // Store error message
                     var errorMessage = new DTOs.ChatMessage
                     {
@@ -349,7 +349,7 @@ public class ChatController : ControllerBase
                         Timestamp = DateTime.UtcNow,
                         Metadata = new Dictionary<string, object> { ["error"] = true }
                     };
-                    
+
                     await _historyService.AddMessageAsync(sessionId, errorMessage, CancellationToken.None);
                 }
             }, CancellationToken.None);
@@ -426,7 +426,7 @@ public class ChatController : ControllerBase
         {
             _logger.LogInformation("🔍 [CHAT] Fetching history for session: {SessionId}", sessionId);
             var history = await _historyService.GetHistoryAsync(sessionId, cancellationToken);
-            
+
             _logger.LogInformation("✅ [CHAT] Found {Count} messages for session {SessionId}", 
                 history.Count, sessionId);
             return Ok(history);
@@ -441,5 +441,147 @@ public class ChatController : ControllerBase
             _logger.LogError(ex, "❌ [CHAT] Error retrieving history for session {SessionId}", sessionId);
             return StatusCode(500, new { error = "Failed to retrieve chat history", details = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Stream chat query processing with real-time updates via Server-Sent Events.
+    /// This endpoint processes the research workflow and streams progress updates.
+    /// WebUI should use this endpoint instead of /query for real-time feedback.
+    /// </summary>
+    [HttpPost("sessions/{sessionId}/stream")]
+    public async Task StreamQuery(
+        [Required] string sessionId,
+        [FromBody][Required] SendMessageRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        _logger.LogInformation("📥 [STREAM] Request received: POST /api/chat/sessions/{SessionId}/stream", sessionId);
+
+        if (!ModelState.IsValid)
+        {
+            Response.StatusCode = StatusCodes.Status400BadRequest;
+            await Response.WriteAsJsonAsync(
+                new { error = "Invalid request", details = "Message is required" },
+                cancellationToken);
+            return;
+        }
+
+        Response.ContentType = "text/event-stream";
+        Response.Headers["Cache-Control"] = "no-cache";
+        Response.Headers["Connection"] = "keep-alive";
+        Response.Headers["X-Accel-Buffering"] = "no";
+
+        try
+        {
+            // Verify session exists
+            var history = await _historyService.GetHistoryAsync(sessionId, cancellationToken);
+
+            // Add user message to session
+            var userMessage = new DTOs.ChatMessage
+            {
+                Id = Guid.NewGuid().ToString(),
+                Role = "user",
+                Content = request.Message,
+                Timestamp = DateTime.UtcNow,
+                Metadata = null
+            };
+
+            await _historyService.AddMessageAsync(sessionId, userMessage, cancellationToken);
+            _logger.LogInformation("✅ [STREAM] User message stored for session {SessionId}", sessionId);
+
+            // Stream processing updates
+            _logger.LogInformation("🔄 [STREAM] Starting stream processing for session {SessionId}", sessionId);
+
+            // Send initial status
+            await WriteStreamEvent(new { 
+                status = "processing", 
+                message = "Processing your query...",
+                timestamp = DateTime.UtcNow
+            }, cancellationToken);
+
+            // Process the message and stream progress
+            _logger.LogInformation("🔄 [STREAM] Executing workflow for session {SessionId}", sessionId);
+
+            string assistantResponse;
+            try
+            {
+                assistantResponse = await _integrationService.ProcessChatMessageAsync(
+                    sessionId,
+                    request.Message,
+                    request.Config);
+            }
+            catch (Exception workflowEx)
+            {
+                _logger.LogError(workflowEx, "❌ [STREAM] Workflow error for session {SessionId}", sessionId);
+                assistantResponse = $"Error processing request: {workflowEx.Message}";
+            }
+
+            // Store the assistant response in session history
+            var assistantMessage = new DTOs.ChatMessage
+            {
+                Id = Guid.NewGuid().ToString(),
+                Role = "assistant",
+                Content = assistantResponse,
+                Timestamp = DateTime.UtcNow,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["config"] = request.Config ?? new ResearchConfig()
+                }
+            };
+
+            await _historyService.AddMessageAsync(sessionId, assistantMessage, cancellationToken);
+            _logger.LogInformation("✅ [STREAM] Assistant response stored for session {SessionId}", sessionId);
+
+            // Send completion event with response
+            await WriteStreamEvent(new { 
+                status = "complete", 
+                message = assistantResponse,
+                response = assistantResponse,
+                timestamp = DateTime.UtcNow
+            }, cancellationToken);
+
+            // Send final completion marker
+            await Response.WriteAsync("data: [DONE]\n\n", cancellationToken);
+            await Response.Body.FlushAsync(cancellationToken);
+
+            _logger.LogInformation("✅ [STREAM] Stream completed for session {SessionId}", sessionId);
+        }
+        catch (KeyNotFoundException)
+        {
+            _logger.LogWarning("❌ [STREAM] Session {SessionId} not found", sessionId);
+            Response.StatusCode = StatusCodes.Status404NotFound;
+            try
+            {
+                await Response.WriteAsJsonAsync(new { error = "Session not found" }, cancellationToken);
+            }
+            catch { }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "❌ [STREAM] Error in stream endpoint for session {SessionId}", sessionId);
+            try
+            {
+                await WriteStreamEvent(new { 
+                    error = ex.Message, 
+                    status = "error",
+                    timestamp = DateTime.UtcNow
+                }, cancellationToken);
+            }
+            catch { }
+        }
+    }
+
+    /// <summary>
+    /// Helper method to write SSE formatted data
+    /// </summary>
+    private async Task WriteStreamEvent(object data, CancellationToken cancellationToken)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(data, new System.Text.Json.JsonSerializerOptions
+        {
+            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase,
+            WriteIndented = false
+        });
+
+        await Response.WriteAsync($"data: {json}\n\n", cancellationToken);
+        await Response.Body.FlushAsync(cancellationToken);
     }
 }

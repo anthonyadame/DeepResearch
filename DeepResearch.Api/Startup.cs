@@ -214,6 +214,18 @@ public class Startup
         app.UseAuthentication();
         app.UseAuthorization();
 
+        // Disable response compression for streaming endpoints to allow real-time delivery
+        app.Use(async (context, next) =>
+        {
+            if (context.Request.Path.StartsWithSegments("/api/chat/sessions") && context.Request.Path.Value?.Contains("/stream") == true ||
+                context.Request.Path.StartsWithSegments("/api/workflows/master/stream"))
+            {
+                // Disable response compression for streaming
+                context.Response.Headers["Content-Encoding"] = "";
+            }
+            await next();
+        });
+
         app.UseEndpoints(endpoints =>
         {
             endpoints.MapControllers();

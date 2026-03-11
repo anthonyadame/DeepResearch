@@ -36,40 +36,62 @@ function App() {
   useEffect(() => {
     const initializeSession = async () => {
       try {
-        console.log('[App] Initializing session...')
-        
+        console.log('[App] ===== SESSION INITIALIZATION START =====')
+
         // Try to load last session from localStorage
         const lastSessionId = localStorage.getItem('lastSessionId')
-        console.log('[App] Last session ID:', lastSessionId)
-        
+        console.log('[App] lastSessionId from localStorage:', lastSessionId)
+
         if (lastSessionId) {
-          // Verify session still exists on server
+          // Check if session still exists on server
+          console.log('[App] Checking if last session still exists:', lastSessionId)
           try {
-            console.log('[App] Verifying last session:', lastSessionId)
-            await apiService.getChatHistory(lastSessionId)
-            console.log('[App] Session verified, setting:', lastSessionId)
-            setCurrentSessionId(lastSessionId)
-            setIsInitializing(false)
-            return
-          } catch (err) {
-            console.warn('[App] Last session not available:', err)
-            localStorage.removeItem('lastSessionId')
+            const exists = await apiService.sessionExists(lastSessionId)
+            if (exists) {
+              console.log('[App] ✅ Session exists on server!')
+              // Load the history to verify it works
+              const history = await apiService.getChatHistory(lastSessionId)
+              console.log('[App] ✅ History loaded! Has', history.length, 'messages')
+              setCurrentSessionId(lastSessionId)
+              setDebugError('')
+              console.log('[App] ===== SESSION INITIALIZATION COMPLETE (restored) =====')
+              setIsInitializing(false)
+              return
+            } else {
+              console.log('[App] Session no longer exists on server')
+            }
+          } catch (verifyErr) {
+            console.warn('[App] ⚠️  Error verifying session:', verifyErr instanceof Error ? verifyErr.message : verifyErr)
           }
+          localStorage.removeItem('lastSessionId')
         }
-        
+
         // Create new session if no valid session exists
         console.log('[App] Creating new session...')
         const session = await apiService.createSession(`New Chat ${new Date().toLocaleTimeString()}`)
-        console.log('[App] Session created:', session)
+        console.log('[App] ✅ New session created:', { id: session.id, title: session.title })
+
+        if (!session.id) {
+          throw new Error('Session created but missing id field')
+        }
+
         setCurrentSessionId(session.id)
         setDebugError('')
+        console.log('[App] ===== SESSION INITIALIZATION COMPLETE (new session) =====')
       } catch (err) {
-        console.error('[App] Failed to initialize session:', err)
+        console.error('[App] ❌ FATAL: Failed to initialize session:', err)
         const errorMsg = err instanceof Error ? err.message : String(err)
-        setDebugError(errorMsg)
-        // Create a temporary offline session ID
-        setCurrentSessionId('offline-' + Date.now())
+        console.error('[App] Error message:', errorMsg)
+        console.error('[App] Error stack:', err instanceof Error ? err.stack : 'N/A')
+        setDebugError(`Initialization failed: ${errorMsg}`)
+
+        // Create a temporary offline session ID as last resort
+        const offlineId = 'offline-' + Date.now()
+        console.log('[App] Creating offline fallback session:', offlineId)
+        setCurrentSessionId(offlineId)
+        console.log('[App] ===== SESSION INITIALIZATION COMPLETE (offline fallback) =====')
       } finally {
+        console.log('[App] Setting isInitializing to false')
         setIsInitializing(false)
       }
     }
@@ -129,55 +151,72 @@ function App() {
               </div>
             </div>
           ) : currentSessionId ? (
-            <div className="flex h-full gap-0 overflow-hidden">
-              {/* Chat Area - Fills available space between sidebars */}
-              <div 
-                className="flex flex-col overflow-hidden flex-1"
-              >
-                {/* View Mode Selector */}
-                <div className="flex gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                  <button
-                    onClick={() => setViewMode('chat')}
-                    className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                      viewMode === 'chat'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    💬 Chat
-                  </button>
-                  <button
-                    onClick={() => setViewMode('research')}
-                    className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                      viewMode === 'research'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-                    }`}
-                  >
-                    🔬 Research
-                  </button>
+            <div className="flex h-full gap-0 overflow-hidden flex-col">
+              {/* Error Banner */}
+              {debugError && (
+                <div className="bg-red-100 dark:bg-red-900 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-200 px-4 py-3 rounded-none">
+                  <div className="flex justify-between items-center">
+                    <span><strong>⚠️ Initialization Warning:</strong> {debugError}</span>
+                    <button 
+                      onClick={() => setDebugError('')}
+                      className="text-red-700 dark:text-red-200 hover:text-red-900 dark:hover:text-red-100"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
+              {/* Main Content */}
+              <div className="flex h-full gap-0 overflow-hidden flex-1">
+                {/* Chat Area - Fills available space between sidebars */}
+                <div 
+                  className="flex flex-col overflow-hidden flex-1"
+                >
+                  {/* View Mode Selector */}
+                  <div className="flex gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <button
+                      onClick={() => setViewMode('chat')}
+                      className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                        viewMode === 'chat'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      💬 Chat
+                    </button>
+                    <button
+                      onClick={() => setViewMode('research')}
+                      className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                        viewMode === 'research'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      🔬 Research
+                    </button>
+                  </div>
+
+                  {/* Chat or Research View */}
+                  <div className="flex-1 overflow-hidden">
+                    {viewMode === 'chat' ? (
+                      <ChatDialog sessionId={currentSessionId} />
+                    ) : (
+                      <ResearchStreamingPanel />
+                    )}
+                  </div>
                 </div>
 
-                {/* Chat or Research View */}
-                <div className="flex-1 overflow-hidden">
-                  {viewMode === 'chat' ? (
-                    <ChatDialog sessionId={currentSessionId} />
-                  ) : (
-                    <ResearchStreamingPanel />
-                  )}
-                </div>
+                {/* Right Sidebar - Takes remaining space */}
+                <RightSidebar
+                  sessionId={currentSessionId}
+                  rightSidebarOpen={rightSidebarOpen}
+                  setRightSidebarOpen={setRightSidebarOpen}
+                  rightSidebarTacked={rightSidebarTacked}
+                  setRightSidebarTacked={setRightSidebarTacked}
+                  rightSidebarView={rightSidebarView}
+                  setRightSidebarView={setRightSidebarView}
+                />
               </div>
-
-              {/* Right Sidebar - Takes remaining space */}
-              <RightSidebar
-                sessionId={currentSessionId}
-                rightSidebarOpen={rightSidebarOpen}
-                setRightSidebarOpen={setRightSidebarOpen}
-                rightSidebarTacked={rightSidebarTacked}
-                setRightSidebarTacked={setRightSidebarTacked}
-                rightSidebarView={rightSidebarView}
-                setRightSidebarView={setRightSidebarView}
-              />
             </div>
           ) : (
             <div className="flex items-center justify-center h-full">

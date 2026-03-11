@@ -59,6 +59,7 @@ RUN pip install --no-cache-dir --upgrade agentlightning
 RUN pip install --no-cache-dir agentlightning[apo]
 
 # Install remaining dependencies from requirements.txt
+# Updated: Added motor and pymongo for MongoDB support
 RUN pip install --no-cache-dir \
     fastapi==0.109.0 \
     uvicorn[standard]==0.27.0 \
@@ -73,11 +74,29 @@ RUN pip install --no-cache-dir \
     nltk==3.8.1 \
     textblob==0.17.1
 
+# Install MongoDB drivers separately to ensure they're installed
+RUN pip install --no-cache-dir \
+    motor>=3.3.0 \
+    pymongo>=4.6.0
+
+# Install OpenTelemetry packages (install separately to avoid conflicts)
+RUN pip install --no-cache-dir \
+    opentelemetry-api==1.40.0 \
+    opentelemetry-sdk==1.40.0 \
+    opentelemetry-exporter-otlp==1.40.0 \
+    opentelemetry-instrumentation-fastapi==0.61b0 \
+    opentelemetry-instrumentation-httpx==0.61b0
+
 # Copy built dashboard assets from the package output path
 COPY --from=dashboard-builder /build/agent-lightning/agentlightning/dashboard /app/agentlightning/dashboard
 
 # Copy application code
 COPY Docker/lightning-server/server.py .
+COPY Docker/lightning-server/config.py .
+COPY Docker/lightning-server/verl_manager.py .
+COPY Docker/lightning-server/apo_manager.py .
+COPY Docker/lightning-server/verl-config.yaml .
+COPY Docker/lightning-server/hydra-config-template.yaml .
 
 # Download NLTK data (required for textblob)
 RUN python -c "import nltk; nltk.download('punkt'); nltk.download('brown')"
@@ -95,7 +114,7 @@ EXPOSE 9090
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:8090/health || exit 1
+    CMD curl -f http://localhost:9090/health || exit 1
 
 # Run the server
 CMD ["python", "server.py"]
@@ -169,6 +188,9 @@ COPY --from=dashboard-builder /build/agent-lightning/agentlightning/dashboard /a
 
 # Copy application code
 COPY Docker/lightning-server/server.py .
+COPY Docker/lightning-server/config.py .
+COPY Docker/lightning-server/verl_manager.py .
+COPY Docker/lightning-server/apo_manager.py .
 
 # Download NLTK data
 RUN python -c "import nltk; nltk.download('punkt'); nltk.download('brown')"
@@ -184,7 +206,7 @@ USER lightning
 EXPOSE 9090
 
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:8090/health || exit 1
+    CMD curl -f http://localhost:9090/health || exit 1
 
 CMD ["python", "server.py"]
 

@@ -1,0 +1,208 @@
+# LiteLLM Proxy Configuration
+# Unified LLM router supporting multiple backends
+
+model_list:
+  # ========== vLLM Primary Backend ==========
+  - model_name: llama-3.1-8b
+    litellm_params:
+      model: openai/llama-3.1-8b  # OpenAI-compatible format
+      api_base: http://vllm-server:8000/v1
+      api_key: "EMPTY"
+      custom_llm_provider: openai
+      supports_function_calling: true
+      supports_vision: false
+      max_tokens: 8192
+    model_info:
+      mode: chat
+      base_model: meta-llama/Llama-3.1-8B-Instruct
+      tier: free
+
+  - model_name: llama-3.1-70b
+    litellm_params:
+      model: openai/llama-3.1-70b
+      api_base: http://vllm-server:8000/v1
+      api_key: "EMPTY"
+      custom_llm_provider: openai
+      supports_function_calling: true
+      max_tokens: 8192
+    model_info:
+      mode: chat
+      base_model: meta-llama/Llama-3.1-70B-Instruct
+      tier: free
+
+  - model_name: mistral-7b
+    litellm_params:
+      model: mistralai/Mistral-7B-Instruct-v0.3
+      api_base: http://vllm-server:8000/v1
+      api_key: "EMPTY"
+      custom_llm_provider: openai
+      supports_function_calling: true
+      max_input_tokens: 32768  # Mistral-7B supports 32K context
+      truncation_strategy: "context-pruning"  # Enable context pruning for Mistral
+      max_output_tokens: 2048  # Limit output tokens to prevent OOM
+      max_total_tokens: 34816  # Total tokens (input + output) should not exceed 34K
+    model_info:
+      mode: chat
+      base_model: mistralai/Mistral-7B-Instruct-v0.3
+      tier: free
+
+  - model_name: qwen2.5-7b
+    litellm_params:
+      model: Qwen/Qwen2.5-7B-Instruct
+      api_base: http://vllm-server:8000/v1
+      api_key: "EMPTY"
+      custom_llm_provider: openai
+      supports_function_calling: true
+      max_input_tokens: 128000  # Qwen2.5 supports 128K context
+      truncation_strategy: "context-pruning"  # Enable context pruning for Qwen2.5
+      max_output_tokens: 2048  # Limit output tokens to prevent OOM
+      max_total_tokens: 130048  # Total tokens (input + output) should not exceed 130K
+    model_info:
+      mode: chat
+      base_model: Qwen/Qwen2.5-7B-Instruct
+      tier: free
+
+  - model_name: qwen3.5-9b
+    litellm_params:
+      model: Qwen/Qwen3.5-9B
+      api_base: http://vllm-server:8000/v1
+      api_key: "EMPTY"
+      custom_llm_provider: openai
+      supports_function_calling: true
+      max_input_tokens: 262144  # Qwen3.5 supports 262K context natively
+      truncation_strategy: "context-pruning"  # Enable context pruning for Qwen3.5
+      max_output_tokens: 2048  # Limit output tokens to prevent OOM
+      max_total_tokens: 264192  # Total tokens (input + output) should not exceed 264K
+    model_info:
+      mode: chat
+      base_model: Qwen/Qwen3.5-9B
+      tier: free
+
+  - model_name: gpt-oss-20b
+    litellm_params:
+      model: openai/gpt-oss-20b
+      api_base: http://vllm-server:8000/v1
+      api_key: "EMPTY"
+      custom_llm_provider: openai
+      supports_function_calling: true
+      max_tokens: 128000  # GPT-OSS supports 128K context
+    model_info:
+      mode: chat
+      base_model: openai/gpt-oss-20b
+      tier: free
+
+  - model_name: deepseek-coder-33b
+    litellm_params:
+      model: openai/deepseek-coder-33b
+      api_base: http://vllm-server:8000/v1
+      api_key: "EMPTY"
+      custom_llm_provider: openai
+      supports_function_calling: true
+      max_tokens: 16384
+    model_info:
+      mode: chat
+      base_model: deepseek-ai/deepseek-coder-33b-instruct
+      tier: free
+  
+  # ========== OpenAI Fallback (Optional) ==========
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+      timeout: 60
+    model_info:
+      mode: chat
+      tier: paid
+  
+  - model_name: gpt-4o
+    litellm_params:
+      model: gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+      timeout: 60
+    model_info:
+      mode: chat
+      tier: paid
+  
+  # ========== Anthropic Fallback (Optional) ==========
+  - model_name: claude-3-5-sonnet
+    litellm_params:
+      model: claude-3-5-sonnet-20241022
+      api_key: os.environ/ANTHROPIC_API_KEY
+      timeout: 60
+    model_info:
+      mode: chat
+      tier: paid
+  
+  # ========== Ollama Local Fallback (Optional) ==========
+  - model_name: ollama-llama3
+    litellm_params:
+      model: ollama/llama3.1:8b
+      api_base: http://ollama:11434
+    model_info:
+      mode: chat
+      tier: free
+
+# ========== Router Settings ==========
+router_settings:
+  routing_strategy: usage-based-routing  # Balances load across models
+  model_group_alias:
+    llama: ["llama-3.1-8b", "llama-3.1-70b"]  # Group alias for vLLM Llama models
+    mistral: ["mistral-7b"]  # Group alias for Mistral models
+    qwen: ["qwen2.5-7b", "qwen3.5-9b"]  # Group alias for Qwen models
+    gpt-oss: ["gpt-oss-20b"]  # Group alias for GPT-OSS models
+    coder: ["deepseek-coder-33b"]  # Group alias for code models
+    gpt: ["gpt-4o-mini", "gpt-4o"]  # Group alias for OpenAI models
+    claude: ["claude-3-5-sonnet"]  # Group alias for Anthropic models
+  
+  # Retry configuration
+  num_retries: 3
+  allowed_fails: 3  # Number of failures before cooldown
+  cooldown_time: 60  # Cooldown time in seconds
+  
+  # Timeout settings
+  timeout: 600  # Global timeout (10 minutes)
+  request_timeout: 300  # Per-request timeout (5 minutes)
+  
+  # Load balancing
+  set_verbose: true
+  enable_pre_call_checks: true
+
+# ========== General Settings ==========
+general_settings:
+  master_key: "sk-1234"  # Change this in production
+  database_url: "postgresql://litellm:litellm@postgres:5432/litellm"  # Optional: for request logging
+  
+  # Logging
+  json_logs: true
+  detailed_debug: false
+  log_raw_request_response: false
+  
+  # Callbacks for telemetry
+  success_callback: ["prometheus"]
+  failure_callback: ["prometheus"]
+  
+  # Cache settings (optional)
+  cache: false
+  cache_params:
+    type: "redis"
+    host: "redis"
+    port: 6379
+    
+  # Budget management (optional)
+  max_budget: 100.0  # Maximum spend limit
+  budget_duration: "30d"
+
+# ========== Prometheus Metrics ==========
+litellm_settings:
+  # Enable Prometheus metrics
+  success_callback: ["prometheus"]
+  failure_callback: ["prometheus"]
+  
+  # Custom callback for OpenTelemetry (optional)
+  callbacks: ["prometheus", "otel"]
+  
+  # Drop unmapped params (compatibility)
+  drop_params: true
+  
+  # Return token IDs support (for vLLM)
+  return_token_ids: true

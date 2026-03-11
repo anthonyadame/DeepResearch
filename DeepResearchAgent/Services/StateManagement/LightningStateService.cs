@@ -210,12 +210,36 @@ public class LightningStateService : ILightningStateService
                 }
             }
         }
+        catch (HttpRequestException ex) when (ex.Message.Contains("503"))
+        {
+            // Lightning Server unavailable - log and return default
+            Console.WriteLine($"⚠️ Lightning Server unavailable (503) for GetAgentState {agentId}: {ex.Message}");
+            return new AgentStateModel 
+            { 
+                AgentId = agentId,
+                Status = AgentStatus.Initializing,
+                LastUpdated = DateTime.UtcNow
+            };
+        }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"Failed to get agent state for {agentId}", ex);
+            // For other exceptions, log but don't crash - return default state
+            Console.WriteLine($"⚠️ Error getting agent state for {agentId}: {ex.Message}");
+            return new AgentStateModel 
+            { 
+                AgentId = agentId,
+                Status = AgentStatus.Initializing,
+                LastUpdated = DateTime.UtcNow
+            };
         }
 
-        throw new InvalidOperationException($"Agent state not found for {agentId}");
+        // If we couldn't get from Lightning Server, return a default state
+        return new AgentStateModel 
+        { 
+            AgentId = agentId,
+            Status = AgentStatus.Initializing,
+            LastUpdated = DateTime.UtcNow
+        };
     }
 
     public async Task SetAgentStateAsync(string agentId, AgentStateModel state, CancellationToken ct = default)
@@ -240,7 +264,20 @@ public class LightningStateService : ILightningStateService
                 Input = new Dictionary<string, object> { { "state", state } }
             };
 
-            await _lightningService.SubmitTaskAsync(agentId, taskData);
+            try
+            {
+                await _lightningService.SubmitTaskAsync(agentId, taskData);
+            }
+            catch (HttpRequestException ex) when (ex.Message.Contains("503"))
+            {
+                // Lightning Server unavailable (503) - log but continue with cache-only storage
+                Console.WriteLine($"⚠️ Lightning Server unavailable (503) for SetAgentState {agentId}: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                // Log other errors but don't crash - continue with cache-only storage
+                Console.WriteLine($"⚠️ Error storing agent state to Lightning Server {agentId}: {ex.Message}");
+            }
 
             var cacheKey = $"{AGENT_STATE_PREFIX}{agentId}";
             _cache.Set(cacheKey, state, TimeSpan.FromMinutes(CACHE_DURATION_MINUTES));
@@ -324,12 +361,37 @@ public class LightningStateService : ILightningStateService
                 }
             }
         }
+        catch (HttpRequestException ex) when (ex.Message.Contains("503"))
+        {
+            // Lightning Server unavailable - log and return cached value or default
+            Console.WriteLine($"⚠️ Lightning Server unavailable (503) for GetResearchState {researchId}: {ex.Message}");
+            // Return empty state rather than crashing
+            return new ResearchStateModel 
+            { 
+                ResearchId = researchId,
+                Status = ResearchStatus.Pending,
+                StartedAt = DateTime.UtcNow
+            };
+        }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"Failed to get research state for {researchId}", ex);
+            // For other exceptions, log but don't crash - return default state
+            Console.WriteLine($"⚠️ Error getting research state for {researchId}: {ex.Message}");
+            return new ResearchStateModel 
+            { 
+                ResearchId = researchId,
+                Status = ResearchStatus.Pending,
+                StartedAt = DateTime.UtcNow
+            };
         }
 
-        throw new InvalidOperationException($"Research state not found for {researchId}");
+        // If we couldn't get from Lightning Server, return a default state
+        return new ResearchStateModel 
+        { 
+            ResearchId = researchId,
+            Status = ResearchStatus.Pending,
+            StartedAt = DateTime.UtcNow
+        };
     }
 
     public async Task SetResearchStateAsync(string researchId, ResearchStateModel state, CancellationToken ct = default)
@@ -345,7 +407,22 @@ public class LightningStateService : ILightningStateService
                 Input = new Dictionary<string, object> { { "state", state } }
             };
 
-            await _lightningService.SubmitTaskAsync("research-manager", taskData);
+            try
+            {
+                await _lightningService.SubmitTaskAsync("research-manager", taskData);
+            }
+            catch (HttpRequestException ex) when (ex.Message.Contains("503"))
+            {
+                // Lightning Server unavailable (503) - log but continue with cache-only storage
+                Console.WriteLine($"⚠️ Lightning Server unavailable (503) for SetResearchState {researchId}: {ex.Message}");
+                Console.WriteLine($"   State will be stored locally in cache. Lightning Server sync will occur when available.");
+            }
+            catch (Exception ex)
+            {
+                // Log other errors but don't crash - continue with cache-only storage
+                Console.WriteLine($"⚠️ Error storing research state to Lightning Server {researchId}: {ex.Message}");
+                Console.WriteLine($"   State will be stored locally in cache. Lightning Server sync will occur when available.");
+            }
 
             var cacheKey = $"{RESEARCH_STATE_PREFIX}{researchId}";
             _cache.Set(cacheKey, state, TimeSpan.FromMinutes(CACHE_DURATION_MINUTES));
@@ -416,12 +493,36 @@ public class LightningStateService : ILightningStateService
                 }
             }
         }
+        catch (HttpRequestException ex) when (ex.Message.Contains("503"))
+        {
+            // Lightning Server unavailable - log and return default
+            Console.WriteLine($"⚠️ Lightning Server unavailable (503) for GetVerificationState {verificationId}: {ex.Message}");
+            return new VerificationStateModel 
+            { 
+                VerificationId = verificationId,
+                IsVerified = false,
+                VerifiedAt = DateTime.UtcNow
+            };
+        }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"Failed to get verification state for {verificationId}", ex);
+            // For other exceptions, log but don't crash - return default state
+            Console.WriteLine($"⚠️ Error getting verification state for {verificationId}: {ex.Message}");
+            return new VerificationStateModel 
+            { 
+                VerificationId = verificationId,
+                IsVerified = false,
+                VerifiedAt = DateTime.UtcNow
+            };
         }
 
-        throw new InvalidOperationException($"Verification state not found for {verificationId}");
+        // If we couldn't get from Lightning Server, return a default state
+        return new VerificationStateModel 
+        { 
+            VerificationId = verificationId,
+            IsVerified = false,
+            VerifiedAt = DateTime.UtcNow
+        };
     }
 
     public async Task SetVerificationStateAsync(string verificationId, VerificationStateModel state, CancellationToken ct = default)
@@ -447,7 +548,20 @@ public class LightningStateService : ILightningStateService
                 );
             }
 
-            await _lightningService.SubmitTaskAsync("verification-manager", taskData);
+            try
+            {
+                await _lightningService.SubmitTaskAsync("verification-manager", taskData);
+            }
+            catch (HttpRequestException ex) when (ex.Message.Contains("503"))
+            {
+                // Lightning Server unavailable (503) - log but continue with cache-only storage
+                Console.WriteLine($"⚠️ Lightning Server unavailable (503) for SetVerificationState {verificationId}: {ex.Message}");
+            }
+            catch (Exception ex)
+            {
+                // Log other errors but don't crash - continue with cache-only storage
+                Console.WriteLine($"⚠️ Error storing verification state to Lightning Server {verificationId}: {ex.Message}");
+            }
 
             var cacheKey = $"{VERIFICATION_STATE_PREFIX}{verificationId}";
             _cache.Set(cacheKey, state, TimeSpan.FromMinutes(CACHE_DURATION_MINUTES));

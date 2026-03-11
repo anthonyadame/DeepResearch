@@ -78,6 +78,7 @@ services:
     ports:
       - "8090:8090"
     environment:
+      # Lightning Server Configuration
       LIGHTNING_PORT: 8090
       RMPT_ENABLED: "true"
       RLCS_ENABLED: "true"
@@ -87,15 +88,52 @@ services:
       RLCS_TRACKING_ENABLED: "true"
       RLCS_CONFIDENCE_THRESHOLD: 0.7
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      # MongoDB Configuration (persistent storage)
+      MONGO_URI: "mongodb://lightning:${MONGO_PASSWORD:-lightningpass}@mongo-primary:27017,mongo-secondary-1:27017,mongo-secondary-2:27017/?replicaSet=rs0&authSource=admin"
+      MONGO_DB_NAME: "lightning"
+      MONGO_REPLICA_SET: "rs0"
+
+      # VERL Configuration (RL training)
+      VERL__ENABLED: "true"
+      VERL__RAY_ENABLED: "false"
+
+      # APO Configuration (prompt optimization)
+      APO__ENABLED: "true"
+      APO__DEFAULT_MODEL: "Qwen/Qwen3.5-2B-Instruct"
+      APO__DEFAULT_ITERATIONS: "5"
+      APO__OPTIMIZATION_STRATEGY: "iterative_refinement"
+      APO__EVALUATION_USE_LLM: "true"
+      APO__EVALUATION_LLM_ENDPOINT: "http://host.docker.internal:8001"
+      APO__EVALUATION_LLM_MODEL: "Qwen/Qwen3.5-2B"
+      APO__EVALUATION_LLM_TIMEOUT: "30"
+      APO__EVALUATION_FALLBACK_TO_HEURISTIC: "true"
+      APO__BEAM_WIDTH: "3"
+      APO__VARIATIONS_PER_PROMPT: "2"
+      APO__POPULATION_SIZE: "5"
+      APO__MUTATION_RATE: "0.3"
+      APO__CROSSOVER_RATE: "0.7"
+      APO__TOURNAMENT_SIZE: "3"
+
+      # OpenTelemetry Configuration (distributed tracing)
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://deepresearch-otel-collector:4317"
+      OTEL_SERVICE_NAME: "lightning-server"
+      OTEL_TRACES_SAMPLER: "parentbased_traceidratio"
+      OTEL_TRACES_SAMPLER_ARG: "0.1"
+      OTEL_LOG_LEVEL: "info"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 60s
     volumes:
       - lightning-data:/app/data
     networks:
       - deepresearch-hub
+    depends_on:
+      - ollama
+      - qdrant
     deploy:
       resources:
         reservations:

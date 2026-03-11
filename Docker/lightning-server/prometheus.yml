@@ -1,0 +1,77 @@
+# Prometheus Configuration for Lightning Server Monitoring
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'lightning-server'
+    environment: 'development'
+
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Load alerting rules
+rule_files:
+  - "prometheus-alerts.yml"
+
+# Scrape configurations
+scrape_configs:
+  # Lightning Server metrics
+  - job_name: 'lightning-server'
+    static_configs:
+      - targets: ['lightning-server:9091']
+        labels:
+          service: 'lightning-server'
+          component: 'api'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+
+  # MongoDB metrics (requires mongodb_exporter - optional)
+  # - job_name: 'mongodb'
+  #   static_configs:
+  #     - targets: ['mongodb-exporter:9216']
+  #       labels:
+  #         service: 'mongodb'
+  #         instance: 'mongo1'
+
+  # vLLM Multi-Model metrics
+  - job_name: 'vllm-qwen'
+    static_configs:
+      - targets: ['vllm-qwen:8000']
+        labels:
+          service: 'vllm'
+          model: 'qwen3.5-9b'
+          gpu: 'gpu0'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  - job_name: 'vllm-mistral'
+    static_configs:
+      - targets: ['vllm-mistral:8000']
+        labels:
+          service: 'vllm'
+          model: 'mistral-7b'
+          gpu: 'gpu1'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # LiteLLM Proxy metrics
+  - job_name: 'litellm'
+    static_configs:
+      - targets: ['litellm-proxy:4000']
+        labels:
+          service: 'litellm'
+          component: 'proxy'
+    scrape_interval: 15s
+    scrape_timeout: 10s

@@ -1,0 +1,246 @@
+# VERL PPO Training Configuration (Hydra format)
+# Auto-generated from Lightning Server training request
+# Job ID: {{ job_id }}
+# Generated: {{ generated_at }}
+
+defaults:
+  # Load default configurations for each role
+  - actor@actor_rollout_ref.actor: actor
+  - rollout@actor_rollout_ref.rollout: rollout  
+  - ref@actor_rollout_ref.ref: ref
+  - critic@critic: critic
+  {% if use_reward_model -%}
+  - reward_model@reward_model: reward_model
+  {% endif -%}
+  # Self config overrides defaults
+  - _self_
+
+# Trainer configuration
+trainer:
+  # Project and experiment naming
+  project_name: "{{ project_name }}"
+  experiment_name: "{{ experiment_name }}"
+  
+  # Training schedule
+  total_epochs: {{ total_epochs }}
+  
+  # Checkpointing and evaluation
+  save_freq: {{ save_freq }}
+  test_freq: {{ test_freq }}
+  
+  # Logging
+  logger:
+    tensorboard_log_dir: "{{ tensorboard_dir }}"
+    {% if wandb_project -%}
+    wandb:
+      project: "{{ wandb_project }}"
+      entity: "{{ wandb_entity }}"
+      name: "{{ experiment_name }}"
+    {% endif -%}
+
+# Data configuration
+data:
+  # Dataset paths
+  train_files:
+    - "{{ train_file_path }}"
+  {% if val_file_path -%}
+  val_files:
+    - "{{ val_file_path }}"
+  {% endif -%}
+  
+  # Batch sizes
+  train_batch_size: {{ train_batch_size }}
+  
+  # Sequence lengths
+  max_prompt_length: {{ max_prompt_length }}
+  max_response_length: {{ max_response_length }}
+  
+  # Data processing
+  truncation: "error"
+  
+# Actor + Rollout + Reference (colocated for efficiency)
+actor_rollout_ref:
+  # Hybrid engine for combining training and inference
+  hybrid_engine: true
+  
+  # Model configuration (shared across actor, rollout, ref)
+  model:
+    # Model path (HuggingFace or local)
+    path: "{{ model_path }}"
+    
+    # Model settings
+    trust_remote_code: {{ trust_remote_code }}
+    enable_gradient_checkpointing: {{ gradient_checkpointing }}
+    enable_activation_offload: false
+    use_remove_padding: false
+    
+    # LoRA configuration
+    {% if lora_rank > 0 -%}
+    lora_rank: {{ lora_rank }}
+    lora_alpha: {{ lora_alpha }}
+    target_modules: "{{ lora_target_modules }}"
+    {% else -%}
+    lora_rank: 0
+    {% endif -%}
+    
+    # Performance optimizations
+    use_liger: false
+    use_fused_kernels: true
+    fused_kernel_options:
+      impl_backend: torch
+  
+  # Actor (policy model) configuration
+  actor:
+    # PPO batch sizes
+    ppo_mini_batch_size: {{ ppo_mini_batch_size }}
+    ppo_micro_batch_size_per_gpu: {{ ppo_micro_batch_size_per_gpu }}
+    
+    # Dynamic batch sizing
+    use_dynamic_bsz: {{ use_dynamic_bsz }}
+    ppo_max_token_len_per_gpu: {{ ppo_max_token_len_per_gpu }}
+    
+    # PPO clipping
+    clip_ratio: {{ clip_ratio }}
+    clip_ratio_low: {{ clip_ratio }}
+    clip_ratio_high: {{ clip_ratio }}
+    
+    # Loss configuration
+    loss_agg_mode: "token-mean"
+    entropy_coeff: {{ entropy_coeff }}
+    use_kl_loss: false
+    
+    # Training schedule
+    ppo_epochs: {{ ppo_epochs }}
+    shuffle: {{ shuffle }}
+    
+    # Optimizer configuration
+    optim:
+      lr: {{ learning_rate }}
+      lr_warmup_steps_ratio: {{ warmup_ratio }}
+      total_training_steps: -1  # Computed at runtime
+      weight_decay: {{ weight_decay }}
+    
+    # Checkpoint configuration
+    checkpoint:
+      save_contents: ['model', 'optimizer', 'extra']
+      load_contents: ['model', 'optimizer', 'extra']
+  
+  # Rollout (sampling) configuration - uses vLLM for fast inference
+  rollout:
+    # vLLM rollout backend
+    name: vllm
+    
+    # Model loading
+    load_format: "auto"
+    layered_summon: false
+    
+    # vLLM engine settings
+    gpu_memory_utilization: {{ gpu_memory_utilization }}
+    tensor_model_parallel_size: {{ tensor_parallel_size }}
+    enable_chunked_prefill: true
+    
+    # Sampling parameters
+    rollout_n: {{ n_rollouts }}
+    temperature: {{ temperature }}
+    top_p: {{ top_p }}
+    top_k: {{ top_k }}
+    
+    # Token limits
+    max_tokens: {{ max_response_length }}
+  
+  # Reference model (frozen, for KL divergence)
+  ref:
+    # Use same model as actor but frozen
+    log_prob_micro_batch_size_per_gpu: {{ ref_batch_size_per_gpu }}
+    log_prob_use_dynamic_bsz: {{ use_dynamic_bsz }}
+    log_prob_max_token_len_per_gpu: {{ ppo_max_token_len_per_gpu }}
+
+# Critic (value function) configuration
+critic:
+  # Training strategy: fsdp, fsdp2, or megatron
+  strategy: "fsdp"
+  
+  # Model (can be same as actor or different)
+  model:
+    path: "{{ critic_model_path }}"
+    enable_gradient_checkpointing: {{ gradient_checkpointing }}
+    {% if lora_rank > 0 -%}
+    lora_rank: {{ lora_rank }}
+    lora_alpha: {{ lora_alpha }}
+    {% else -%}
+    lora_rank: 0
+    {% endif -%}
+  
+  # Batch sizes
+  ppo_mini_batch_size: {{ ppo_mini_batch_size }}
+  ppo_micro_batch_size_per_gpu: {{ ppo_micro_batch_size_per_gpu }}
+  
+  # Training
+  ppo_epochs: {{ ppo_epochs }}
+  shuffle: {{ shuffle }}
+  cliprange_value: {{ clip_ratio_value }}
+  grad_clip: 1.0
+  
+  # Optimizer
+  optim:
+    lr: {{ critic_lr }}
+    weight_decay: {{ weight_decay }}
+  
+  # Checkpoint
+  checkpoint:
+    save_contents: ['model', 'optimizer', 'extra']
+    load_contents: ['model', 'optimizer', 'extra']
+
+{% if use_reward_model -%}
+# Reward model configuration (optional - if not using function-based rewards)
+reward_model:
+  # Model path
+  model:
+    path: "{{ reward_model_path }}"
+  
+  # Inference settings
+  reward_model_micro_batch_size_per_gpu: {{ reward_batch_size_per_gpu }}
+{% else -%}
+# Custom reward function (function-based rewards)
+custom_reward_function:
+  # Path to custom reward function file
+  path: "{{ custom_reward_path }}"
+  # Function name to call
+  name: compute_score
+{% endif -%}
+
+# PPO Algorithm hyperparameters
+algorithm:
+  # GAE (Generalized Advantage Estimation) parameters
+  gamma: {{ gamma }}
+  lam: {{ gae_lambda }}
+  adv_estimator: "gae"
+  
+  # KL divergence control
+  kl_ctrl:
+    kl_coef: {{ kl_coef }}
+    type: "fixed"  # Options: fixed, adaptive
+  
+  # PPO update parameters
+  ppo_mini_batch_size: {{ ppo_mini_batch_size }}
+  ppo_micro_batch_size_per_gpu: {{ ppo_micro_batch_size_per_gpu }}
+  cliprange: {{ clip_ratio }}
+  cliprange_value: {{ clip_ratio_value }}
+
+# Ray distributed training configuration
+ray_init:
+  # CPU and GPU allocation
+  num_cpus: {{ num_cpus }}
+  num_gpus: {{ num_gpus }}
+  
+  # Ray cluster address (null for local mode)
+  address: null
+  
+  # Logging level
+  logging_level: "info"
+
+# Profiler configuration (optional, for performance analysis)
+profiler:
+  discrete: false
+  all_ranks: false
+  ranks: []

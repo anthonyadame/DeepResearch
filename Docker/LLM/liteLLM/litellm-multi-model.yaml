@@ -1,0 +1,83 @@
+# LiteLLM Multi-Model Router Configuration
+# Routes requests to Qwen3.5 models (2B, 4B) optimized for 24GB VRAM
+# Note: 9B and 27B models require GGUF quantization (llama.cpp) - not included in this config
+
+model_list:
+  # ========== Qwen3.5-2B (Fast, Lightweight) ==========
+  - model_name: qwen3.5-2b
+    litellm_params:
+      model: Qwen/Qwen3.5-2B
+      api_base: http://vllm-qwen35-2b:8000/v1
+      api_key: "EMPTY"
+      custom_llm_provider: openai
+      supports_function_calling: true
+      max_input_tokens: 32768  # Qwen3.5-2B supports 32K context
+      truncation_strategy: "context-pruning"
+      max_output_tokens: 2048
+      max_total_tokens: 34816
+    model_info:
+      mode: chat
+      base_model: Qwen/Qwen3.5-2B
+      tier: free
+      tags: ["fast", "lightweight", "reasoning", "multilingual", "qwen3"]
+
+  # ========== Qwen3.5-4B (Balanced Quality) ==========
+  - model_name: qwen3.5-4b
+    litellm_params:
+      model: Qwen/Qwen3.5-4B
+      api_base: http://vllm-qwen35-4b:8000/v1
+      api_key: "EMPTY"
+      custom_llm_provider: openai
+      supports_function_calling: true
+      max_input_tokens: 32768  # Qwen3.5-4B supports 32K context
+      truncation_strategy: "context-pruning"
+      max_output_tokens: 2048
+      max_total_tokens: 34816
+    model_info:
+      mode: chat
+      base_model: Qwen/Qwen3.5-4B
+      tier: free
+      tags: ["quality", "reasoning", "multilingual", "general", "qwen3"]
+
+  # ========== Fallback: OpenAI (Optional) ==========
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+      timeout: 60
+    model_info:
+      mode: chat
+      tier: paid
+      tags: ["fallback", "emergency"]
+
+# ========== Router Settings ==========
+router_settings:
+  routing_strategy: usage-based-routing  # Balance load across models
+  num_retries: 3
+  allowed_fails: 3
+  cooldown_time: 60
+  timeout: 600
+  
+  # Model group aliases (for C# code compatibility)
+  model_group_alias:
+    qwen: ["qwen3.5-2b", "qwen3.5-4b"]  # All available Qwen3.5 models (vLLM optimized)
+    qwen-fast: ["qwen3.5-2b"]           # Fastest responses
+    qwen-balanced: ["qwen3.5-4b"]       # Balanced speed/quality
+    qwen-small: ["qwen3.5-2b", "qwen3.5-4b"]  # Lightweight models
+    fallback: ["gpt-4o-mini"]           # Emergency fallback
+
+# ========== General Settings ==========
+general_settings:
+  master_key: "sk-1234"  # Change in production!
+  database_url: "postgresql://litellm:litellm@postgres:5432/litellm"
+  
+  # Logging
+  json_logs: true
+  log_level: INFO
+  
+  # Metrics
+  callbacks: ["prometheus"]
+  
+  # Performance
+  max_parallel_requests: 500
+  request_timeout: 600

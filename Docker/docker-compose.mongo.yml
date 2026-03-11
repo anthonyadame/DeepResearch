@@ -1,0 +1,139 @@
+name: deepresearch-mongo
+
+version: '3.8'
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # MongoDB Replica Set - Phase 2: Production (With KeyFile)
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # This configuration adds keyFile authentication for replica set security
+  # Run deploy-mongo-phase1.ps1 FIRST to initialize, then deploy-mongo-phase2.ps1
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  mongo-primary:
+    image: mongo:7
+    container_name: research-mongo-primary
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: lightning
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-lightningpass}
+      MONGO_INITDB_DATABASE: lightning
+    volumes:
+      - mongo-primary:/data/db
+      - mongo-primary-config:/data/configdb
+      - ./mongo-keyfile:/data/keyfile
+    networks:
+      - deepresearch-hub
+    command: 
+      - bash
+      - -c
+      - |
+        chmod 400 /data/keyfile/mongodb-keyfile
+        chown mongodb:mongodb /data/keyfile/mongodb-keyfile
+        exec mongod --replSet rs0 --bind_ip_all --auth --keyFile /data/keyfile/mongodb-keyfile
+    healthcheck:
+      test: ["CMD", "bash", "-c", "mongosh --quiet --eval 'db.adminCommand(\"ping\")' -u lightning -p lightningpass --authenticationDatabase admin || mongosh --quiet --eval 'db.adminCommand(\"ping\")'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mongo-secondary-1:
+    image: mongo:7
+    container_name: research-mongo-secondary-1
+    ports:
+      - "27018:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: lightning
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-lightningpass}
+    volumes:
+      - mongo-secondary-1:/data/db
+      - mongo-secondary-1-config:/data/configdb
+      - ./mongo-keyfile:/data/keyfile
+    networks:
+      - deepresearch-hub
+    command:
+      - bash
+      - -c
+      - |
+        chmod 400 /data/keyfile/mongodb-keyfile
+        chown mongodb:mongodb /data/keyfile/mongodb-keyfile
+        exec mongod --replSet rs0 --bind_ip_all --auth --keyFile /data/keyfile/mongodb-keyfile
+    healthcheck:
+      test: ["CMD", "bash", "-c", "mongosh --quiet --eval 'db.adminCommand(\"ping\")' -u lightning -p lightningpass --authenticationDatabase admin || mongosh --quiet --eval 'db.adminCommand(\"ping\")'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    depends_on:
+      mongo-primary:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mongo-secondary-2:
+    image: mongo:7
+    container_name: research-mongo-secondary-2
+    ports:
+      - "27019:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: lightning
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-lightningpass}
+    volumes:
+      - mongo-secondary-2:/data/db
+      - mongo-secondary-2-config:/data/configdb
+      - ./mongo-keyfile:/data/keyfile
+    networks:
+      - deepresearch-hub
+    command:
+      - bash
+      - -c
+      - |
+        chmod 400 /data/keyfile/mongodb-keyfile
+        chown mongodb:mongodb /data/keyfile/mongodb-keyfile
+        exec mongod --replSet rs0 --bind_ip_all --auth --keyFile /data/keyfile/mongodb-keyfile
+    healthcheck:
+      test: ["CMD", "bash", "-c", "mongosh --quiet --eval 'db.adminCommand(\"ping\")' -u lightning -p lightningpass --authenticationDatabase admin || mongosh --quiet --eval 'db.adminCommand(\"ping\")'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    depends_on:
+      mongo-primary:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  deepresearch-hub:
+    external: true
+    driver: bridge
+
+volumes:
+  mongo-primary:
+    driver: local
+  mongo-primary-config:
+    driver: local
+  mongo-secondary-1:
+    driver: local
+  mongo-secondary-1-config:
+    driver: local
+  mongo-secondary-2:
+    driver: local
+  mongo-secondary-2-config:
+    driver: local

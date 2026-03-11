@@ -4,39 +4,46 @@ namespace DeepResearchAgent.Configuration;
 
 /// <summary>
 /// Configuration for LLM model selection across different workflow functions.
-/// Allows optimization of price/performance ratio for each specific task.
+/// Maps to multi-model vLLM deployment with LiteLLM routing.
+/// Container 1: Qwen2.5-7B (vllm-qwen:8001) - Reasoning, quality, critique, 128K context
+/// Container 2: Mistral-7B (vllm-mistral:8002) - Fast tools, research, pruning
 /// </summary>
 public class WorkflowModelConfiguration
 {
     /// <summary>
     /// Model for supervisor brain decision-making (requires reasoning ability).
-    /// Default: "gpt-oss:20b" (balanced reasoning + speed)
+    /// Default: "qwen2.5-7b" (Qwen2.5-7B on vllm-qwen:8001)
+    /// Performance: ~2,500 tok/s, 128K context, excellent reasoning
     /// </summary>
-    public string SupervisorBrainModel { get; set; } = "gpt-oss:20b";
+    public string SupervisorBrainModel { get; set; } = "qwen2.5-7b";
 
     /// <summary>
     /// Model for tool execution and research coordination.
-    /// Default: "mistral:7b" (fast, cost-effective)
+    /// Default: "mistral-7b" (Mistral-7B on vllm-mistral:8002)
+    /// Performance: ~2,500 tok/s, 32K context, fast and cost-effective
     /// </summary>
-    public string SupervisorToolsModel { get; set; } = "mistral:7b";
+    public string SupervisorToolsModel { get; set; } = "mistral-7b";
 
     /// <summary>
     /// Model for quality evaluation and scoring (requires analysis).
-    /// Default: "gpt-oss:20b" (analytical capability)
+    /// Default: "qwen2.5-7b" (Qwen2.5-7B - enhanced reasoning for evaluation)
+    /// Performance: Superior analytical capability, 128K context for comprehensive analysis
     /// </summary>
-    public string QualityEvaluatorModel { get; set; } = "gpt-oss:20b";
+    public string QualityEvaluatorModel { get; set; } = "qwen2.5-7b";
 
     /// <summary>
     /// Model for red team adversarial critique (requires reasoning).
-    /// Default: "gpt-oss:20b" (critical thinking)
+    /// Default: "qwen2.5-7b" (Qwen2.5-7B - critical thinking capability)
+    /// Performance: Latest generation Qwen with improved reasoning
     /// </summary>
-    public string RedTeamModel { get; set; } = "gpt-oss:20b";
+    public string RedTeamModel { get; set; } = "qwen2.5-7b";
 
     /// <summary>
     /// Model for context pruning and fact extraction (requires understanding).
-    /// Default: "mistral:7b" (good comprehension, fast)
+    /// Default: "mistral-7b" (Mistral-7B - fast comprehension and extraction)
+    /// Performance: Good comprehension, ~2,500 tok/s for quick processing
     /// </summary>
-    public string ContextPrunerModel { get; set; } = "mistral:7b";
+    public string ContextPrunerModel { get; set; } = "mistral-7b";
 
     /// <summary>
     /// Get a model for a specific workflow function.

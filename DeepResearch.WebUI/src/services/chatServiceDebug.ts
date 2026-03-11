@@ -106,7 +106,7 @@ export async function createSession(title?: string): Promise<any> {
 export async function healthCheck(): Promise<boolean> {
   try {
     log(`🏥 Checking API health...`);
-    const response = await fetch(`http://localhost:6000/health`, {
+    const response = await fetch(`http://localhost:5000/health`, {
       method: 'GET',
     });
     const isHealthy = response.ok;

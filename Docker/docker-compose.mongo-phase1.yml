@@ -1,0 +1,108 @@
+name: deepresearch-mongo
+
+version: '3.8'
+
+services:
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # MongoDB Replica Set - Phase 1: Initial Setup (No KeyFile)
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # This configuration creates the replica set and admin user
+  # After initialization, use docker-compose.mongo.yml for production
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  mongo-primary:
+    image: mongo:7
+    container_name: research-mongo-primary
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-primary:/data/db
+      - mongo-primary-config:/data/configdb
+    networks:
+      - deepresearch-hub
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mongo-secondary-1:
+    image: mongo:7
+    container_name: research-mongo-secondary-1
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo-secondary-1:/data/db
+      - mongo-secondary-1-config:/data/configdb
+    networks:
+      - deepresearch-hub
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    depends_on:
+      mongo-primary:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  mongo-secondary-2:
+    image: mongo:7
+    container_name: research-mongo-secondary-2
+    ports:
+      - "27019:27017"
+    volumes:
+      - mongo-secondary-2:/data/db
+      - mongo-secondary-2-config:/data/configdb
+    networks:
+      - deepresearch-hub
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    depends_on:
+      mongo-primary:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  deepresearch-hub:
+    external: true
+    driver: bridge
+
+volumes:
+  mongo-primary:
+    driver: local
+  mongo-primary-config:
+    driver: local
+  mongo-secondary-1:
+    driver: local
+  mongo-secondary-1-config:
+    driver: local
+  mongo-secondary-2:
+    driver: local
+  mongo-secondary-2-config:
+    driver: local

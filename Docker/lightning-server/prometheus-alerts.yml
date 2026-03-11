@@ -1,0 +1,131 @@
+# Prometheus Alerting Rules for Lightning Server
+# These rules define conditions that trigger alerts
+
+groups:
+  - name: lightning_server_alerts
+    interval: 30s
+    rules:
+      # ========== API Health Alerts ==========
+      - alert: HighRequestLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{service="lightning-server"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+        annotations:
+          summary: "High request latency detected"
+          description: "95th percentile latency is {{ $value }}s (threshold: 1s) for {{ $labels.handler }}"
+      
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{service="lightning-server",status=~"5.."}[5m]) / rate(http_requests_total{service="lightning-server"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+      
+      - alert: LightningServerDown
+        expr: up{job="lightning-server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: api
+        annotations:
+          summary: "Lightning Server is down"
+          description: "Lightning Server has been down for more than 1 minute"
+
+      # ========== MongoDB Alerts ==========
+      - alert: MongoDBConnectionIssues
+        expr: mongodb_up{service="mongodb"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "MongoDB connection issues"
+          description: "Cannot connect to MongoDB instance {{ $labels.instance }}"
+      
+      - alert: MongoDBHighConnectionCount
+        expr: mongodb_connections{service="mongodb",state="current"} > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "MongoDB high connection count"
+          description: "MongoDB has {{ $value }} active connections (threshold: 100)"
+
+      # ========== Lightning Store Alerts ==========
+      - alert: HighRolloutQueueDepth
+        expr: lightning_rollouts_total{status="queuing"} > 100
+        for: 10m
+        labels:
+          severity: warning
+          component: lightning-store
+        annotations:
+          summary: "High rollout queue depth"
+          description: "{{ $value }} rollouts queued (threshold: 100), possible processing bottleneck"
+      
+      - alert: RolloutFailureRateHigh
+        expr: rate(lightning_rollouts_total{status="failed"}[5m]) / rate(lightning_rollouts_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: lightning-store
+        annotations:
+          summary: "High rollout failure rate"
+          description: "Rollout failure rate is {{ $value | humanizePercentage }} (threshold: 10%)"
+      
+      - alert: NoRolloutProgress
+        expr: rate(lightning_rollouts_total[15m]) == 0
+        for: 15m
+        labels:
+          severity: warning
+          component: lightning-store
+        annotations:
+          summary: "No rollout progress detected"
+          description: "No rollouts completed in the last 15 minutes"
+
+      # ========== Resource Alerts ==========
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes{service="lightning-server"} / 1024 / 1024 / 1024 > 4
+        for: 5m
+        labels:
+          severity: warning
+          component: resources
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}GB (threshold: 4GB)"
+      
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total{service="lightning-server"}[5m]) > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          component: resources
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value | humanizePercentage }} (threshold: 80%)"
+
+      # ========== OpenTelemetry Alerts ==========
+      - alert: HighSpanDropRate
+        expr: rate(otel_spans_dropped_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: telemetry
+        annotations:
+          summary: "High span drop rate"
+          description: "{{ $value }} spans/s being dropped, possible export issues"
+      
+      - alert: OTLPExportFailures
+        expr: rate(otel_exporter_failures_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: telemetry
+        annotations:
+          summary: "OTLP export failures detected"
+          description: "{{ $value }} export failures/s, traces may be lost"

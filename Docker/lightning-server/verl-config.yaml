@@ -1,0 +1,258 @@
+# VERL (Reinforcement Learning) Training Configuration
+# This configuration defines settings for PPO-based RL training of LLMs
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Training Hyperparameters
+# ═══════════════════════════════════════════════════════════════════════════════
+training:
+  # PPO algorithm settings
+  ppo_learning_rate: 1.0e-5          # Learning rate for PPO optimizer
+  ppo_epochs: 4                       # Number of PPO epochs per batch
+  ppo_clip_ratio: 0.2                 # PPO clipping parameter
+  
+  # Batch settings
+  train_batch_size: 4                 # Number of samples per training batch
+  mini_batch_size: 2                  # Mini-batch size for gradient updates
+  gradient_accumulation_steps: 2      # Steps to accumulate gradients
+  
+  # Rollout settings
+  n_rollouts: 16                      # Number of rollouts per input prompt
+  rollout_batch_size: 8               # Batch size for rollout generation
+  
+  # Sequence length limits
+  max_prompt_length: 512              # Maximum prompt length in tokens
+  max_response_length: 512            # Maximum response length in tokens
+  max_sequence_length: 1024           # Total max sequence length (prompt + response)
+  
+  # Training loop control
+  num_train_steps: 1000               # Total number of training steps
+  save_interval: 100                  # Save checkpoint every N steps
+  eval_interval: 50                   # Evaluate model every N steps
+  log_interval: 10                    # Log metrics every N steps
+  
+  # Loss coefficients
+  kl_coef: 0.05                       # KL divergence penalty coefficient
+  value_loss_coef: 0.5                # Value function loss coefficient
+  entropy_coef: 0.01                  # Entropy bonus coefficient
+  
+  # Optimization
+  max_grad_norm: 1.0                  # Gradient clipping threshold
+  warmup_steps: 100                   # Learning rate warmup steps
+  
+  # Early stopping
+  early_stopping_patience: 3          # Stop if no improvement for N evals
+  early_stopping_threshold: 0.01      # Minimum improvement threshold
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Model Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+models:
+  # Actor model (policy network)
+  actor:
+    name: "qwen3.5-2b"                # Model identifier
+    path: "Qwen/Qwen3.5-2B-Instruct"  # HuggingFace model path
+    vllm_endpoint: "http://localhost:8001"  # vLLM serving endpoint
+    
+  # Critic model (value network) - can share weights with actor
+  critic:
+    name: "qwen3.5-2b-critic"
+    path: "Qwen/Qwen3.5-2B-Instruct"  # Same as actor initially
+    share_weights_with_actor: true     # Share base model weights
+    
+  # Reference model (for KL penalty) - frozen copy of initial actor
+  reference:
+    name: "qwen3.5-2b-ref"
+    path: "Qwen/Qwen3.5-2B-Instruct"
+    frozen: true                       # Never updated during training
+    
+  # Reward model (for scoring generations)
+  reward:
+    name: "reward_model_v1"
+    path: null                         # Will use function-based rewards initially
+    type: "function"                   # Options: "function", "model", "human"
+    
+    # Function-based reward configuration
+    function_rewards:
+      # Length penalty (encourage concise responses)
+      length_penalty:
+        enabled: true
+        target_length: 256
+        penalty_factor: 0.01
+        
+      # Coherence reward (basic heuristics)
+      coherence:
+        enabled: true
+        check_repetition: true
+        repetition_penalty: 0.5
+        
+      # Task-specific rewards (to be customized per task)
+      task_rewards:
+        enabled: false
+        # Examples: code_execution_success, question_answering_accuracy, etc.
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Hardware & Distributed Training
+# ═══════════════════════════════════════════════════════════════════════════════
+hardware:
+  # GPU allocation
+  n_gpus_per_node: 1                  # Number of GPUs per node
+  gpu_memory_utilization: 0.8         # vLLM GPU memory utilization
+  
+  # Ray distributed training
+  ray_enabled: true                   # Enable Ray for distributed training
+  ray_address: null                   # Ray cluster address (null = local)
+  num_workers: 1                      # Number of Ray workers
+  
+  # Mixed precision training
+  fp16: false                         # Use FP16 training
+  bf16: true                          # Use BF16 training (recommended for modern GPUs)
+  
+  # CPU settings
+  num_cpus_per_worker: 4              # CPUs allocated per worker
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Storage & Checkpointing
+# ═══════════════════════════════════════════════════════════════════════════════
+storage:
+  # Checkpoint directory
+  checkpoints_dir: "/app/verl_checkpoints"
+  
+  # Checkpoint management
+  max_checkpoints: 5                  # Keep only last N checkpoints
+  checkpoint_format: "safetensors"    # Format: "safetensors" or "pytorch"
+  
+  # MongoDB persistence
+  mongodb_enabled: true               # Store metadata in MongoDB
+  mongodb_collection: "verl_training_jobs"
+  
+  # Model artifacts
+  save_full_model: false              # Save full model or only adapter weights
+  save_optimizer_state: true          # Include optimizer state in checkpoints
+  
+  # Logging
+  tensorboard_enabled: false          # Enable TensorBoard logging
+  wandb_enabled: false                # Enable Weights & Biases logging
+  local_log_dir: "/app/verl_logs"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Dataset Configuration
+# ═══════════════════════════════════════════════════════════════════════════════
+dataset:
+  # Training data
+  train_dataset_path: null            # Path to training dataset (JSON/JSONL)
+  validation_dataset_path: null       # Path to validation dataset
+  
+  # Dataset format
+  prompt_key: "prompt"                # Key for prompt in dataset
+  response_key: "response"            # Key for response (if supervised)
+  reward_key: "reward"                # Key for reward signal (if available)
+  
+  # Data loading
+  streaming: false                    # Stream data instead of loading all
+  num_workers: 2                      # Workers for data loading
+  prefetch_factor: 2                  # Prefetch batches
+  
+  # Data preprocessing
+  shuffle: true                       # Shuffle training data
+  shuffle_buffer_size: 1000           # Buffer size for shuffling
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Monitoring & Telemetry
+# ═══════════════════════════════════════════════════════════════════════════════
+monitoring:
+  # OpenTelemetry integration
+  opentelemetry_enabled: true
+  trace_training_steps: true
+  trace_rollouts: false               # Can be verbose
+  
+  # Prometheus metrics
+  prometheus_enabled: true
+  prometheus_port: 9091
+  
+  # Metrics to track
+  track_metrics:
+    - "reward/mean"
+    - "reward/std"
+    - "reward/max"
+    - "reward/min"
+    - "kl_divergence/mean"
+    - "value_loss"
+    - "policy_loss"
+    - "entropy"
+    - "learning_rate"
+    - "grad_norm"
+    - "response_length/mean"
+    - "response_length/std"
+    
+  # Alert thresholds
+  alert_on_high_kl: true
+  kl_alert_threshold: 1.0             # Alert if KL > threshold
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Task Presets
+# ═══════════════════════════════════════════════════════════════════════════════
+# Predefined configurations for common RL tasks
+task_presets:
+  # Coding assistant task
+  coding_assistant:
+    description: "Fine-tune for code generation and debugging"
+    dataset_path: "datasets/code_generation.jsonl"
+    reward_function: "code_execution_success"
+    max_response_length: 1024
+    n_rollouts: 8
+    
+  # Conversational assistant
+  conversational:
+    description: "Fine-tune for helpful, harmless, honest conversations"
+    dataset_path: "datasets/conversation.jsonl"
+    reward_function: "human_preference"
+    max_response_length: 512
+    n_rollouts: 16
+    
+  # Question answering
+  qa_assistant:
+    description: "Fine-tune for accurate question answering"
+    dataset_path: "datasets/qa_pairs.jsonl"
+    reward_function: "answer_accuracy"
+    max_response_length: 256
+    n_rollouts: 12
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Advanced Settings
+# ═══════════════════════════════════════════════════════════════════════════════
+advanced:
+  # LoRA (Low-Rank Adaptation) for parameter-efficient training
+  use_lora: false                     # Enable LoRA
+  lora_r: 8                           # LoRA rank
+  lora_alpha: 16                      # LoRA alpha
+  lora_dropout: 0.05                  # LoRA dropout
+  lora_target_modules:                # Modules to apply LoRA
+    - "q_proj"
+    - "v_proj"
+    - "k_proj"
+    - "o_proj"
+  
+  # Gradient checkpointing (save memory)
+  gradient_checkpointing: false
+  
+  # Debugging
+  debug_mode: false                   # Enable verbose debugging
+  save_generations: true              # Save generated text samples
+  max_generations_to_save: 100        # Limit saved samples
+  
+  # Experimental features
+  use_reference_free: false           # PPO without reference model (PPO-ptx)
+  adaptive_kl_ctrl: false             # Adaptive KL penalty
+  use_gae: true                       # Generalized Advantage Estimation
+  gae_lambda: 0.95                    # GAE lambda parameter
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Environment Variables (Optional Overrides)
+# ═══════════════════════════════════════════════════════════════════════════════
+# These can be overridden via environment variables:
+# - VERL_LEARNING_RATE
+# - VERL_BATCH_SIZE
+# - VERL_NUM_TRAIN_STEPS
+# - VERL_CHECKPOINTS_DIR
+# - VERL_ACTOR_MODEL
+# - VERL_REWARD_MODEL

@@ -108,3 +108,8 @@ appsettings.Local.json
 /DeepResearch.Api/data/keys
 /.gitignore
 /Docker/Websearch/searxng/settings.yml
+/DeepResearch.Api/data/chat-sessions
+/BuildDocs/Planning
+/Docker/mongo-keyfile/mongodb-keyfile
+/Docker/MARKDOWN_VALIDATION_REPORT.md
+/Docker/lightning-server/Mongo/Scripts/README-PATH-FIXES.md
