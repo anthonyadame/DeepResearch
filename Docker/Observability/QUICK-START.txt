@@ -1,0 +1,229 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║            📊 DEEPRESEARCH OBSERVABILITY - QUICK START GUIDE                  ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+┌───────────────────────────────────────────────────────────────────────────────┐
+│ ✅ ALL ISSUES RESOLVED                                                         │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+  Issue 1: Dashboard not showing data               → FIXED ✅
+  Issue 2: System.MissingMethodException            → FIXED ✅  
+  Issue 3: Package version conflicts                → FIXED ✅
+  Issue 4: Grafana dashboard not appearing          → FIXED ✅
+
+┌───────────────────────────────────────────────────────────────────────────────┐
+│ 🚀 START IN 3 STEPS                                                            │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+  STEP 1: Start Observability Stack
+  ──────────────────────────────────
+  cd C:\RepoEx\PhoenixAI\DeepResearch\Docker\Observability
+  .\start-observability.ps1
+
+  Wait 15 seconds for services to initialize...
+
+  STEP 2: Start DeepResearchAgent
+  ────────────────────────────────
+  cd C:\RepoEx\PhoenixAI\DeepResearch
+  dotnet run --project DeepResearchAgent
+
+  Expected output:
+    ✓ Observability services started
+    • Metrics endpoint: http://localhost:5000/metrics
+    • Health check: http://localhost:5000/health
+
+  STEP 3: Run a Workflow
+  ──────────────────────
+  In the DeepResearchAgent console:
+    Enter your research query: What is quantum computing?
+
+  Watch the metrics flow!
+
+┌───────────────────────────────────────────────────────────────────────────────┐
+│ 🌐 ACCESS DASHBOARDS                                                           │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+  Grafana Dashboard (Main Interface)
+  ───────────────────────────────────
+  URL:       http://localhost:3001
+  Login:     admin / admin
+  Path:      Dashboards → DeepResearch → DeepResearch MasterWorkflow Observability
+  Direct:    http://localhost:3001/d/deepresearch-masterworkflow
+
+  Prometheus (Metrics Database)
+  ──────────────────────────────
+  URL:       http://localhost:9090
+  Targets:   http://localhost:9090/targets (verify scraping)
+  Query:     deepresearch_workflow_steps_total
+
+  Jaeger (Distributed Tracing)
+  ────────────────────────────
+  URL:       http://localhost:16686
+  Service:   DeepResearchAgent
+  View:      Execution traces and spans
+
+  DeepResearchAgent Metrics
+  ─────────────────────────
+  Metrics:   http://localhost:5000/metrics
+  Health:    http://localhost:5000/health
+
+┌───────────────────────────────────────────────────────────────────────────────┐
+│ 📊 WHAT YOU'LL SEE IN GRAFANA                                                  │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+  Panel 1: ⚡ Workflow Execution Rate        - Steps/sec (real-time)
+  Panel 2: ⏱️  Workflow Step Duration (p95)   - Performance percentiles
+  Panel 3: 🕐 Total Workflow Duration        - End-to-end timing
+  Panel 4: ❌ Workflow Error Rate            - Failures per second
+  Panel 5: 🤖 LLM Request Duration           - AI provider latency
+  Panel 6: 🎫 LLM Tokens Used                - Token consumption
+  Panel 7: 🔧 Tool Invocation Rate           - Tool usage patterns
+  Panel 8: 💾 State Cache Hit Rate           - Caching efficiency
+  Panel 9: 📋 Current Method Execution       - Live execution table
+
+┌───────────────────────────────────────────────────────────────────────────────┐
+│ ✅ VERIFICATION TESTS                                                          │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+  Test Metrics Endpoint
+  ─────────────────────
+  cd Docker\Observability
+  .\test-metrics-endpoint.ps1
+
+  Expected:
+    ✓ Health endpoint responding
+    ✓ Metrics endpoint responding
+    ✓ Found: deepresearch_workflow_steps_total
+
+  Validate Dashboard Configuration
+  ─────────────────────────────────
+  cd Docker\Observability
+  .\validate-dashboard.ps1
+
+  Expected:
+    ✓ Dashboard has 'uid': deepresearch-masterworkflow
+    ✓ Dashboard has 9 panels
+    ✓ Provider configured for 'DeepResearch' folder
+
+┌───────────────────────────────────────────────────────────────────────────────┐
+│ 🛠️  TROUBLESHOOTING                                                            │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+  Application Won't Start
+  ───────────────────────
+  Error: System.MissingMethodException
+  Fix:   Packages already downgraded to .NET 8. Rebuild:
+         dotnet build DeepResearchAgent
+
+  No Metrics in Dashboard
+  ───────────────────────
+  1. Check DeepResearchAgent is running
+  2. Run a workflow to generate metrics
+  3. Verify Prometheus target: http://localhost:9090/targets
+     Should show: deepresearch-agent → UP (green)
+
+  Dashboard Not Found
+  ───────────────────
+  1. Check Grafana logs: docker logs deepresearch-grafana
+  2. Look for: "finished to provision dashboards"
+  3. Navigate: Dashboards → DeepResearch (folder name)
+
+  Port 5000 In Use
+  ────────────────
+  Check what's using the port:
+    netstat -ano | findstr :5000
+  Kill the process or change port in MetricsHostedService.cs
+
+┌───────────────────────────────────────────────────────────────────────────────┐
+│ 📚 DOCUMENTATION                                                               │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+  All documentation in: Docker/Observability/
+
+  COMPLETE-RESOLUTION.md       - This complete guide
+  METRICS-EXPORT-FIX.md        - How MetricsHostedService works
+  PACKAGE-VERSION-FIX.md       - Package conflict resolution
+  DASHBOARD-FIX.md             - Dashboard provisioning fix
+  OBSERVABILITY.md             - Full observability guide
+  VERIFICATION-CHECKLIST.md    - Testing checklist
+  test-metrics-endpoint.ps1    - Automated testing
+  validate-dashboard.ps1       - Dashboard validation
+
+┌───────────────────────────────────────────────────────────────────────────────┐
+│ 🎯 KEY METRICS TO WATCH                                                        │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+  Workflow Performance
+  ────────────────────
+  • Workflow Step Duration (p95) - Should be < 5 seconds per step
+  • Total Workflow Duration      - Track end-to-end performance
+  • Workflow Execution Rate      - Monitor throughput
+
+  LLM Performance
+  ───────────────
+  • LLM Request Duration (p95)   - AI provider latency
+  • LLM Tokens Used              - Cost tracking
+  • LLM Error Rate               - Reliability monitoring
+
+  System Health
+  ─────────────
+  • State Cache Hit Rate         - Should be > 50%
+  • Workflow Error Rate          - Should be near 0
+  • Tool Invocation Rate         - Usage patterns
+
+┌───────────────────────────────────────────────────────────────────────────────┐
+│ 🔥 WHAT'S FIXED                                                                │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+  ✅ OpenTelemetry registered in ServiceProviderConfiguration
+  ✅ MetricsHostedService exposes /metrics on port 5000
+  ✅ Program.cs starts/stops hosted services properly
+  ✅ Microsoft.Extensions.* packages downgraded to .NET 8 (8.0.1)
+  ✅ DeepResearchAgent.Tests target framework changed to net8.0
+  ✅ Prometheus configuration updated to scrape port 5000
+  ✅ Grafana dashboard JSON structure fixed (added uid, removed wrapper)
+  ✅ Dashboard provider configuration fixed (removed foldersFromFilesStructure)
+  ✅ TelemetryExtensions fixed (removed duplicate Prometheus exporter)
+  ✅ Build successful without errors
+  ✅ Application runs without MissingMethodException
+
+┌───────────────────────────────────────────────────────────────────────────────┐
+│ 📈 EXPECTED BEHAVIOR                                                           │
+└───────────────────────────────────────────────────────────────────────────────┘
+
+  On Startup
+  ──────────
+  • DeepResearchAgent displays "Observability services started"
+  • Metrics endpoint accessible at http://localhost:5000/metrics
+  • Health check returns: {"status":"healthy","service":"DeepResearchAgent"}
+
+  During Workflow Execution
+  ──────────────────────────
+  • Metrics update in Grafana every 5 seconds
+  • Workflow steps counted (deepresearch_workflow_steps_total)
+  • Duration histograms populated (p50, p95, p99)
+  • Traces visible in Jaeger
+
+  In Prometheus
+  ─────────────
+  • Target deepresearch-agent shows UP (green)
+  • Metrics queryable: deepresearch_workflow_steps_total
+  • Scrape interval: 5 seconds
+
+  In Grafana
+  ──────────
+  • Dashboard loads without errors
+  • All 9 panels display data after workflow runs
+  • Real-time updates every 5 seconds
+  • No "No Data" messages
+
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                    🎉 YOU'RE ALL SET! START MONITORING! 🎉                    ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+  Status: ALL SYSTEMS OPERATIONAL ✅
+  Build:  Successful ✅
+  Tests:  Passing ✅
+  Docs:   Complete ✅
+
+  Ready to monitor your AI research workflows with complete observability!

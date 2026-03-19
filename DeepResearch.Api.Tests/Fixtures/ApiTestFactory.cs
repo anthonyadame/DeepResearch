@@ -1,4 +1,5 @@
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
 using DeepResearch.Api.Services.ChatHistory;
 using DeepResearch.Api.Tests.Helpers;
 using Microsoft.AspNetCore.Authentication;
@@ -43,11 +44,11 @@ public class ApiTestFactory : WebApplicationFactory<Program>
 
         builder.ConfigureServices(services =>
         {
-            // Remove real OllamaService
-            var ollamaDescriptor = services.FirstOrDefault(d => d.ServiceType == typeof(OllamaService));
-            if (ollamaDescriptor != null)
+            // Remove real ILlmProvider
+            var llmProviderDescriptor = services.FirstOrDefault(d => d.ServiceType == typeof(ILlmProvider));
+            if (llmProviderDescriptor != null)
             {
-                services.Remove(ollamaDescriptor);
+                services.Remove(llmProviderDescriptor);
             }
 
             // Remove real OllamaCategorizationService
@@ -79,7 +80,7 @@ public class ApiTestFactory : WebApplicationFactory<Program>
             }
 
             // Add mock services
-            services.AddSingleton<OllamaService, MockOllamaService>();
+            services.AddSingleton<ILlmProvider, MockLlmProvider>();
             services.AddSingleton<ICategorizationService, MockCategorizationService>();
             services.AddSingleton<IAgentLightningService, MockAgentLightningService>();
             services.AddSingleton<ILightningRLCSService, MockLightningRLCSService>();

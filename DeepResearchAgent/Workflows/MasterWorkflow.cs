@@ -2,10 +2,14 @@ using DeepResearchAgent.Agents;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Prompts;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.Caching;
+using DeepResearchAgent.Services.LLM;
 using DeepResearchAgent.Services.StateManagement;
 using DeepResearchAgent.Services.WebSearch;
+using DeepResearchAgent.Observability;
 using Microsoft.Extensions.Logging;
 using System.Runtime.CompilerServices;
+using System.Diagnostics;
 
 namespace DeepResearchAgent.Workflows;
 
@@ -27,16 +31,18 @@ public class MasterWorkflow
 {
     private readonly ILightningStateService _stateService;
     private readonly SupervisorWorkflow _supervisor;
-    private readonly OllamaService _llmService;
+    private readonly ILlmProvider _llmService;
     private readonly ILogger<MasterWorkflow>? _logger;
     private readonly StateManager? _stateManager;
     private readonly IWebSearchProvider _searchProvider;
+    private readonly AsyncMetricsCollector? _asyncMetricsCollector;
+    private readonly LlmResponseCache? _llmCache;
 
     // Phase 2 Agents
     private readonly ClarifyAgent _clarifyAgent;
     private readonly ResearchBriefAgent _briefAgent;
     private readonly DraftReportAgent _draftAgent;
-    
+
     // Phase 4 Complex Agents
     private readonly ResearcherAgent _researcherAgent;
     private readonly AnalystAgent _analystAgent;
@@ -45,13 +51,15 @@ public class MasterWorkflow
     public MasterWorkflow(
         ILightningStateService stateService,
         SupervisorWorkflow supervisor,
-        OllamaService llmService,
+        ILlmProvider llmService,
         IWebSearchProvider searchProvider,
         ILogger<MasterWorkflow>? logger = null,
         StateManager? stateManager = null,
         ResearcherAgent? researcherAgent = null,
         AnalystAgent? analystAgent = null,
-        ReportAgent? reportAgent = null)
+        ReportAgent? reportAgent = null,
+        AsyncMetricsCollector? asyncMetricsCollector = null,
+        LlmResponseCache? llmCache = null)
     {
         _stateService = stateService ?? throw new ArgumentNullException(nameof(stateService));
         _supervisor = supervisor ?? throw new ArgumentNullException(nameof(supervisor));
@@ -59,16 +67,62 @@ public class MasterWorkflow
         _searchProvider = searchProvider ?? throw new ArgumentNullException(nameof(searchProvider));
         _logger = logger;
         _stateManager = stateManager;
+        _asyncMetricsCollector = asyncMetricsCollector;
+        _llmCache = llmCache;
 
-        // Initialize Phase 2 agents
-        _clarifyAgent = new ClarifyAgent(_llmService, null);
-        _briefAgent = new ResearchBriefAgent(_llmService, null);
-        _draftAgent = new DraftReportAgent(_llmService, null);
-        
+        // Initialize Phase 2 agents with cache
+        _clarifyAgent = new ClarifyAgent(_llmService, null, llmCache);
+        _briefAgent = new ResearchBriefAgent(_llmService, null, llmCache);
+        _draftAgent = new DraftReportAgent(_llmService, null, llmCache);
+
         // Initialize Phase 4 complex agents
-        _researcherAgent = researcherAgent ?? new ResearcherAgent(_llmService, new ToolInvocationService(_searchProvider, _llmService), null);
-        _analystAgent = analystAgent ?? new AnalystAgent(_llmService, new ToolInvocationService(_searchProvider, _llmService), null);
-        _reportAgent = reportAgent ?? new ReportAgent(_llmService, new ToolInvocationService(_searchProvider, _llmService), null);
+        _researcherAgent = researcherAgent ?? new ResearcherAgent(_llmService, new ToolInvocationService(_searchProvider, _llmService, null, llmCache), null);
+        _analystAgent = analystAgent ?? new AnalystAgent(_llmService, new ToolInvocationService(_searchProvider, _llmService, null, llmCache), null);
+        _reportAgent = reportAgent ?? new ReportAgent(_llmService, new ToolInvocationService(_searchProvider, _llmService, null, llmCache), null);
+    }
+
+    /// <summary>
+    /// Helper method to record metrics using async collector if available, otherwise synchronous
+    /// </summary>
+    private void RecordStepDuration(double durationMs, string workflow, string step)
+    {
+        if (_asyncMetricsCollector != null)
+        {
+            _asyncMetricsCollector.RecordHistogram(
+                DiagnosticConfig.WorkflowStepDuration,
+                durationMs,
+                new KeyValuePair<string, object?>("workflow", workflow),
+                new KeyValuePair<string, object?>("step", step));
+        }
+        else
+        {
+            DiagnosticConfig.WorkflowStepDuration.Record(durationMs,
+                new KeyValuePair<string, object?>("workflow", workflow),
+                new KeyValuePair<string, object?>("step", step));
+        }
+    }
+
+    /// <summary>
+    /// Helper method to increment step counter using async collector if available
+    /// </summary>
+    private void RecordStepComplete(string workflow, string step, string status)
+    {
+        if (_asyncMetricsCollector != null)
+        {
+            _asyncMetricsCollector.RecordCounter(
+                DiagnosticConfig.WorkflowStepsCounter,
+                1L,
+                new KeyValuePair<string, object?>("workflow", workflow),
+                new KeyValuePair<string, object?>("step", step),
+                new KeyValuePair<string, object?>("status", status));
+        }
+        else
+        {
+            DiagnosticConfig.WorkflowStepsCounter.Add(1,
+                new KeyValuePair<string, object?>("workflow", workflow),
+                new KeyValuePair<string, object?>("step", step),
+                new KeyValuePair<string, object?>("status", status));
+        }
     }
 
     /// <summary>
@@ -80,6 +134,7 @@ public class MasterWorkflow
         var researchId = Guid.NewGuid().ToString();
         _logger?.LogInformation("Starting MasterWorkflow with research ID: {researchId}", researchId);
 
+        DiagnosticConfig.IncrementActiveWorkflows();
         try
         {
             // Initialize research state
@@ -177,6 +232,10 @@ public class MasterWorkflow
             }
             throw;
         }
+        finally
+        {
+            DiagnosticConfig.DecrementActiveWorkflows();
+        }
     }
 
     /// <summary>
@@ -187,6 +246,7 @@ public class MasterWorkflow
     {
         _logger?.LogInformation("Starting MasterWorkflow.ExecuteAsync with AgentState");
 
+        DiagnosticConfig.IncrementActiveWorkflows();
         try
         {
             // Extract query from initial message
@@ -233,6 +293,10 @@ public class MasterWorkflow
         {
             _logger?.LogError(ex, "MasterWorkflow.ExecuteAsync failed");
             throw;
+        }
+        finally
+        {
+            DiagnosticConfig.DecrementActiveWorkflows();
         }
     }
 
@@ -405,125 +469,354 @@ public class MasterWorkflow
     public async IAsyncEnumerable<StreamState> StreamStateAsync(string userQuery,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        // Start workflow-level tracing and metrics
+        using var workflowActivity = ActivityScope.Start("MasterWorkflow.StreamStateAsync", ActivityKind.Server);
+        using var workflowMetrics = MetricsCollector.TrackExecution("StreamStateAsync", workflow: "MasterWorkflow");
+        var workflowStopwatch = Stopwatch.StartNew();
+
+        workflowActivity
+            .AddTag("workflow.name", "MasterWorkflow")
+            .AddTag("query.length", userQuery.Length)
+            .AddTag("query.preview", userQuery.Substring(0, Math.Min(100, userQuery.Length)));
+
         _logger?.LogInformation("Starting MasterWorkflow stream");
         yield return new StreamState() 
         {
             Status = Json("status", "connected", "timestamp", DateTime.UtcNow.ToString("O")) 
-        }; 
+        };
 
+        workflowActivity.AddEvent("workflow_connected");
+
+        // Step 1: Clarify
         if (!userQuery.Contains("clarification_provided:"))
         {
-            // Step 1: Clarify
+            using var step1Activity = ActivityScope.Start("Step1.Clarify", ActivityKind.Internal);
+            using var step1Metrics = MetricsCollector.TrackExecution("ClarifyWithUserAsync", 
+                workflow: "MasterWorkflow", step: "Step1");
+            var step1Stopwatch = Stopwatch.StartNew();
+
             _logger?.LogInformation("Stream: Step 1 - Clarifying");
             yield return new StreamState()
             {
                 Status = Json("step", "1", "status", "clarifying user intent") 
             };
 
-            var (needsClarification, clarificationQuestion) = await ClarifyWithUserAsync(userQuery, cancellationToken);
+            step1Activity.AddTag("step.number", 1).AddTag("step.name", "Clarify");
 
-            if (needsClarification)
+            (bool needsClarification, string clarificationQuestion) clarifyResult = (false, "");
+            Exception? step1Exception = null;
+
+            try
             {
-                _logger?.LogInformation("Stream: Clarification needed");
-                yield return new StreamState
-                {
-                    Status = Json("step", "1", "status", "clarification_needed", "message", clarificationQuestion)
-                };
+                clarifyResult = await ClarifyWithUserAsync(userQuery, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                step1Exception = ex;
+                _logger?.LogError(ex, "Step 1 failed");
+            }
+
+            step1Stopwatch.Stop();
+            RecordStepDuration(step1Stopwatch.Elapsed.TotalMilliseconds, "MasterWorkflow", "1_clarify");
+            RecordStepComplete("MasterWorkflow", "1_clarify", step1Exception == null ? "completed" : "failed");
+
+            step1Activity.AddTag("step.duration.ms", step1Stopwatch.Elapsed.TotalMilliseconds);
+
+            if (step1Exception != null)
+            {
+                DiagnosticConfig.WorkflowErrors.Add(1,
+                    new KeyValuePair<string, object?>("workflow", "MasterWorkflow"),
+                    new KeyValuePair<string, object?>("error.type", step1Exception.GetType().Name));
+                step1Activity.RecordException(step1Exception).SetStatus(ActivityStatusCode.Error);
+                yield return new StreamState { Status = Json("status", "error", "message", step1Exception.Message, "step", "1") };
                 yield break;
             }
+
+            if (clarifyResult.needsClarification)
+            {
+                _logger?.LogInformation("Stream: Clarification needed");
+                step1Activity.AddTag("needs_clarification", true);
+                yield return new StreamState
+                {
+                    Status = Json("step", "1", "status", "clarification_needed", "message", clarifyResult.clarificationQuestion)
+                };
+                workflowActivity.SetStatus(ActivityStatusCode.Ok, "Clarification needed");
+                yield break;
+            }
+
+            step1Activity.AddTag("needs_clarification", false).SetStatus(ActivityStatusCode.Ok);
         }
+
         _logger?.LogInformation("Stream: Query clarified");
         yield return new StreamState
         {
             Status = Json("step", "1", "status", "completed", "message", "query is sufficiently detailed")
         };
 
+        workflowActivity.AddEvent("step1_completed");
 
         // Step 2: Research brief
-        _logger?.LogInformation("Stream: Step 2 - Writing research brief");
-        yield return new StreamState
+        string researchBrief = "";
+        using (var step2Activity = ActivityScope.Start("Step2.ResearchBrief", ActivityKind.Internal))
+        using (var step2Metrics = MetricsCollector.TrackExecution("WriteResearchBriefAsync",
+                workflow: "MasterWorkflow", step: "Step2"))
         {
-            Status = Json("step", "2", "status", "writing research brief")
-        };
+            var step2Stopwatch = Stopwatch.StartNew();
 
-        var researchBrief = await WriteResearchBriefAsync(userQuery, cancellationToken);
-        var briefPreview = researchBrief.Substring(0, Math.Min(150, researchBrief.Length)).Replace("\n", " ");
-        _logger?.LogInformation("Stream: Research brief completed ({Length} chars)", researchBrief.Length);
-        yield return new StreamState
-        {
-            Status = Json("step", "2", "status", "completed", "preview", briefPreview, "length", researchBrief.Length.ToString()),
-            ResearchBrief = researchBrief,
-            BriefPreview = briefPreview
-        };
-
-        // Step 3: Initial draft
-        _logger?.LogInformation("Stream: Step 3 - Generating initial draft");
-        yield return new StreamState
-        {
-            Status = Json("step", "3", "status", "generating initial draft report")
-        };
-
-        var draftReport = await WriteDraftReportAsync(researchBrief, cancellationToken);
-        _logger?.LogInformation("Stream: Draft report completed ({Length} chars)", draftReport.Length);
-        yield return new StreamState
-        {
-            Status = Json("step", "3", "status", "completed", "length", draftReport.Length.ToString()),
-            DraftReport = draftReport
-        };
-
-        // Step 4: Supervisor loop (stream its progress)
-        _logger?.LogInformation("Stream: Step 4 - Starting supervisor loop");
-        yield return new StreamState
-        {
-            Status = Json("step", "4", "status", "starting supervisor loop (diffusion process)")
-        };
-
-        int supervisorUpdateCount = 0;
-        await foreach (var supervisorUpdate in _supervisor.StreamSuperviseAsync(researchBrief, draftReport, cancellationToken: cancellationToken))
-        {
-            supervisorUpdateCount++;
-            _logger?.LogDebug("Stream: Supervisor update #{Count}", supervisorUpdateCount);
-            
+            _logger?.LogInformation("Stream: Step 2 - Writing research brief");
             yield return new StreamState
             {
-                SupervisorUpdate = supervisorUpdate
+                Status = Json("step", "2", "status", "writing research brief")
             };
-            // Yield heartbeat every 10 updates to keep connection alive
-            if (supervisorUpdateCount % 10 == 0)
+
+            step2Activity.AddTag("step.number", 2).AddTag("step.name", "ResearchBrief");
+
+            Exception? step2Exception = null;
+            try
             {
+                researchBrief = await WriteResearchBriefAsync(userQuery, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                step2Exception = ex;
+                _logger?.LogError(ex, "Step 2 failed");
+            }
+
+            step2Stopwatch.Stop();
+            RecordStepDuration(step2Stopwatch.Elapsed.TotalMilliseconds, "MasterWorkflow", "2_research_brief");
+            RecordStepComplete("MasterWorkflow", "2_research_brief", step2Exception == null ? "completed" : "failed");
+
+            if (step2Exception != null)
+            {
+                DiagnosticConfig.WorkflowErrors.Add(1,
+                    new KeyValuePair<string, object?>("workflow", "MasterWorkflow"),
+                    new KeyValuePair<string, object?>("error.type", step2Exception.GetType().Name));
+                step2Activity.RecordException(step2Exception).SetStatus(ActivityStatusCode.Error);
+                yield return new StreamState { Status = Json("status", "error", "message", step2Exception.Message, "step", "2") };
+                yield break;
+            }
+
+            var briefPreview = researchBrief.Substring(0, Math.Min(150, researchBrief.Length)).Replace("\n", " ");
+            _logger?.LogInformation("Stream: Research brief completed ({Length} chars)", researchBrief.Length);
+
+            step2Activity
+                .AddTag("step.duration.ms", step2Stopwatch.Elapsed.TotalMilliseconds)
+                .AddTag("brief.length", researchBrief.Length)
+                .SetStatus(ActivityStatusCode.Ok);
+
+            yield return new StreamState
+            {
+                Status = Json("step", "2", "status", "completed", "preview", briefPreview, "length", researchBrief.Length.ToString()),
+                ResearchBrief = researchBrief,
+                BriefPreview = briefPreview
+            };
+
+            workflowActivity.AddEvent("step2_completed", new Dictionary<string, object?>
+            {
+                ["brief.length"] = researchBrief.Length
+            });
+        }
+
+        // Step 3: Initial draft
+        string draftReport = "";
+        using (var step3Activity = ActivityScope.Start("Step3.InitialDraft", ActivityKind.Internal))
+        using (var step3Metrics = MetricsCollector.TrackExecution("WriteDraftReportAsync",
+                workflow: "MasterWorkflow", step: "Step3"))
+        {
+            var step3Stopwatch = Stopwatch.StartNew();
+
+            _logger?.LogInformation("Stream: Step 3 - Generating initial draft");
+            yield return new StreamState
+            {
+                Status = Json("step", "3", "status", "generating initial draft report")
+            };
+
+            step3Activity.AddTag("step.number", 3).AddTag("step.name", "InitialDraft");
+
+            Exception? step3Exception = null;
+            try
+            {
+                draftReport = await WriteDraftReportAsync(researchBrief, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                step3Exception = ex;
+                _logger?.LogError(ex, "Step 3 failed");
+            }
+
+            step3Stopwatch.Stop();
+            DiagnosticConfig.WorkflowStepDuration.Record(step3Stopwatch.Elapsed.TotalMilliseconds,
+                new KeyValuePair<string, object?>("workflow", "MasterWorkflow"),
+                new KeyValuePair<string, object?>("step", "3_initial_draft"));
+            DiagnosticConfig.WorkflowStepsCounter.Add(1,
+                new KeyValuePair<string, object?>("workflow", "MasterWorkflow"),
+                new KeyValuePair<string, object?>("step", "3_initial_draft"),
+                new KeyValuePair<string, object?>("status", step3Exception == null ? "completed" : "failed"));
+
+            if (step3Exception != null)
+            {
+                DiagnosticConfig.WorkflowErrors.Add(1,
+                    new KeyValuePair<string, object?>("workflow", "MasterWorkflow"),
+                    new KeyValuePair<string, object?>("error.type", step3Exception.GetType().Name));
+                step3Activity.RecordException(step3Exception).SetStatus(ActivityStatusCode.Error);
+                yield return new StreamState { Status = Json("status", "error", "message", step3Exception.Message, "step", "3") };
+                yield break;
+            }
+
+            _logger?.LogInformation("Stream: Draft report completed ({Length} chars)", draftReport.Length);
+
+            step3Activity
+                .AddTag("step.duration.ms", step3Stopwatch.Elapsed.TotalMilliseconds)
+                .AddTag("draft.length", draftReport.Length)
+                .SetStatus(ActivityStatusCode.Ok);
+
+            yield return new StreamState
+            {
+                Status = Json("step", "3", "status", "completed", "length", draftReport.Length.ToString()),
+                DraftReport = draftReport
+            };
+
+            workflowActivity.AddEvent("step3_completed", new Dictionary<string, object?>
+            {
+                ["draft.length"] = draftReport.Length
+            });
+        }
+
+        // Step 4: Supervisor loop (stream its progress)
+        using (var step4Activity = ActivityScope.Start("Step4.SupervisorLoop", ActivityKind.Internal))
+        using (var step4Metrics = MetricsCollector.TrackExecution("SupervisorLoop",
+                workflow: "MasterWorkflow", step: "Step4"))
+        {
+            var step4Stopwatch = Stopwatch.StartNew();
+
+            _logger?.LogInformation("Stream: Step 4 - Starting supervisor loop");
+            yield return new StreamState
+            {
+                Status = Json("step", "4", "status", "starting supervisor loop (diffusion process)")
+            };
+
+            step4Activity.AddTag("step.number", 4).AddTag("step.name", "SupervisorLoop");
+
+            int supervisorUpdateCount = 0;
+            await foreach (var supervisorUpdate in _supervisor.StreamSuperviseAsync(researchBrief, draftReport, cancellationToken: cancellationToken))
+            {
+                supervisorUpdateCount++;
+                _logger?.LogDebug("Stream: Supervisor update #{Count}", supervisorUpdateCount);
+
                 yield return new StreamState
                 {
-                    Status = Json("heartbeat", "true", "supervisor_updates", supervisorUpdateCount.ToString())
+                    SupervisorUpdate = supervisorUpdate
                 };
+
+                if (supervisorUpdateCount % 10 == 0)
+                {
+                    yield return new StreamState
+                    {
+                        Status = Json("heartbeat", "true", "supervisor_updates", supervisorUpdateCount.ToString())
+                    };
+                }
             }
+
+            step4Stopwatch.Stop();
+            RecordStepDuration(step4Stopwatch.Elapsed.TotalMilliseconds, "MasterWorkflow", "4_supervisor_loop");
+            RecordStepComplete("MasterWorkflow", "4_supervisor_loop", "completed");
+
+            _logger?.LogInformation("Stream: Supervisor loop completed ({UpdateCount} updates)", supervisorUpdateCount);
+
+            step4Activity
+                .AddTag("step.duration.ms", step4Stopwatch.Elapsed.TotalMilliseconds)
+                .AddTag("supervisor.updates", supervisorUpdateCount)
+                .SetStatus(ActivityStatusCode.Ok);
+
+            yield return new StreamState
+            {
+                Status = Json("step", "4", "status", "completed", "supervisor_updates", supervisorUpdateCount.ToString())
+            };
+
+            workflowActivity.AddEvent("step4_completed", new Dictionary<string, object?>
+            {
+                ["supervisor.updates"] = supervisorUpdateCount
+            });
         }
-        _logger?.LogInformation("Stream: Supervisor loop completed ({UpdateCount} updates)", supervisorUpdateCount);
-        yield return new StreamState
-        {
-            Status = Json("step", "4", "status", "completed", "supervisor_updates", supervisorUpdateCount.ToString())
-        };
 
         // Step 5: Final report
-        _logger?.LogInformation("Stream: Step 5 - Generating final report");
-        yield return new StreamState
+        using (var step5Activity = ActivityScope.Start("Step5.FinalReport", ActivityKind.Internal))
+        using (var step5Metrics = MetricsCollector.TrackExecution("GenerateFinalReportAsync",
+                workflow: "MasterWorkflow", step: "Step5"))
         {
-            Status = Json("step", "5", "status", "generating final polished report")
-        };
+            var step5Stopwatch = Stopwatch.StartNew();
 
-        var refinedSummary = await _supervisor.SuperviseAsync(researchBrief, draftReport, cancellationToken: cancellationToken);
-        var finalReport = await GenerateFinalReportAsync(userQuery, researchBrief, draftReport, refinedSummary, cancellationToken);
-        _logger?.LogInformation("Stream: Final report completed ({Length} chars)", finalReport.Length);
-        yield return new StreamState
-        {
-            Status = Json("step", "5", "status", "completed", "length", finalReport.Length.ToString()),
-            RefinedSummary = refinedSummary,
-            FinalReport = finalReport
-        };
+            _logger?.LogInformation("Stream: Step 5 - Generating final report");
+            yield return new StreamState
+            {
+                Status = Json("step", "5", "status", "generating final polished report")
+            };
 
-        _logger?.LogInformation("Stream: Workflow complete");
+            step5Activity.AddTag("step.number", 5).AddTag("step.name", "FinalReport");
+
+            string refinedSummary = "";
+            string finalReport = "";
+            Exception? step5Exception = null;
+
+            try
+            {
+                refinedSummary = await _supervisor.SuperviseAsync(researchBrief, draftReport, cancellationToken: cancellationToken);
+                finalReport = await GenerateFinalReportAsync(userQuery, researchBrief, draftReport, refinedSummary, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                step5Exception = ex;
+                _logger?.LogError(ex, "Step 5 failed");
+            }
+
+            step5Stopwatch.Stop();
+            RecordStepDuration(step5Stopwatch.Elapsed.TotalMilliseconds, "MasterWorkflow", "5_final_report");
+            RecordStepComplete("MasterWorkflow", "5_final_report", step5Exception == null ? "completed" : "failed");
+
+            if (step5Exception != null)
+            {
+                DiagnosticConfig.WorkflowErrors.Add(1,
+                    new KeyValuePair<string, object?>("workflow", "MasterWorkflow"),
+                    new KeyValuePair<string, object?>("error.type", step5Exception.GetType().Name));
+                step5Activity.RecordException(step5Exception).SetStatus(ActivityStatusCode.Error);
+                yield return new StreamState { Status = Json("status", "error", "message", step5Exception.Message, "step", "5") };
+                yield break;
+            }
+
+            _logger?.LogInformation("Stream: Final report completed ({Length} chars)", finalReport.Length);
+
+            step5Activity
+                .AddTag("step.duration.ms", step5Stopwatch.Elapsed.TotalMilliseconds)
+                .AddTag("final_report.length", finalReport.Length)
+                .SetStatus(ActivityStatusCode.Ok);
+
+            yield return new StreamState
+            {
+                Status = Json("step", "5", "status", "completed", "length", finalReport.Length.ToString()),
+                RefinedSummary = refinedSummary,
+                FinalReport = finalReport
+            };
+
+            workflowActivity.AddEvent("step5_completed", new Dictionary<string, object?>
+            {
+                ["final_report.length"] = finalReport.Length
+            });
+        }
+
+        workflowStopwatch.Stop();
+        DiagnosticConfig.WorkflowTotalDuration.Record(workflowStopwatch.Elapsed.TotalMilliseconds,
+            new KeyValuePair<string, object?>("workflow", "MasterWorkflow"),
+            new KeyValuePair<string, object?>("status", "success"));
+
+        _logger?.LogInformation("Stream: Workflow complete in {Duration}ms", workflowStopwatch.Elapsed.TotalMilliseconds);
+
+        workflowActivity
+            .AddTag("workflow.duration.ms", workflowStopwatch.Elapsed.TotalMilliseconds)
+            .SetStatus(ActivityStatusCode.Ok, "Workflow completed successfully");
+
         yield return new StreamState
         {
-            Status = Json("status", "completed", "totalSteps", "5")
+            Status = Json("status", "completed", "totalSteps", "5", "duration_ms", workflowStopwatch.Elapsed.TotalMilliseconds.ToString())
         };
     }
 

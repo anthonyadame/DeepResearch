@@ -1,8 +1,11 @@
 using DeepResearchAgent.Agents;
 using DeepResearchAgent.Agents.Adapters;
 using DeepResearchAgent.Models;
+using DeepResearchAgent.Observability;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.Caching;
 using DeepResearchAgent.Services.Checkpointing;
+using DeepResearchAgent.Services.LLM;
 using DeepResearchAgent.Services.StateManagement;
 using DeepResearchAgent.Services.VectorDatabase;
 using DeepResearchAgent.Services.WebSearch;
@@ -10,6 +13,7 @@ using DeepResearchAgent.Services.Workflows;
 using DeepResearchAgent.Workflows;
 using DeepResearchAgent.Workflows.Extensions;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -34,6 +38,9 @@ public static class ServiceProviderConfiguration
 
         // Register core services
         RegisterCoreServices(services);
+
+        // Register OpenTelemetry observability
+        RegisterOpenTelemetryServices(services, configuration);
 
         // Register persistence services
         RegisterPersistenceServices(services, configuration);
@@ -124,6 +131,10 @@ public static class ServiceProviderConfiguration
         var rmptConfig = new LightningRMPTConfig();
         configuration.GetSection("Lightning:RMPT").Bind(rmptConfig);
         services.AddSingleton(rmptConfig);
+
+        var workflowModelConfig = new WorkflowModelConfiguration();
+        configuration.GetSection("WorkflowModelConfiguration").Bind(workflowModelConfig);
+        services.AddSingleton(workflowModelConfig);
     }
 
     private static void RegisterCoreServices(IServiceCollection services)
@@ -136,6 +147,45 @@ public static class ServiceProviderConfiguration
 
         services.AddMemoryCache();
         services.AddSingleton<HttpClient>();
+
+        // Register LLM Response Cache with default configuration
+        services.AddSingleton<LlmResponseCache>(sp => new LlmResponseCache(
+            sp.GetRequiredService<IMemoryCache>(),
+            new LlmResponseCacheOptions
+            {
+                EnableCaching = true,
+                DefaultTimeToLive = TimeSpan.FromHours(1),
+                SlidingExpiration = TimeSpan.FromMinutes(30),
+                MaxEntries = 1000
+            }
+        ));
+    }
+
+    private static void RegisterOpenTelemetryServices(IServiceCollection services, IConfiguration configuration)
+    {
+        // Get OpenTelemetry configuration from appsettings.json
+        var environment = configuration["OpenTelemetry:Environment"] ?? "development";
+        var otlpEndpoint = configuration["OpenTelemetry:Exporters:Otlp:Endpoint"] ?? "http://localhost:4317";
+        var prometheusEnabled = configuration.GetValue("OpenTelemetry:Exporters:Prometheus:Enabled", true);
+        var consoleEnabled = configuration.GetValue("OpenTelemetry:Exporters:Console:Enabled", false);
+
+        // Note: ServiceName and ServiceVersion are defined as const in DiagnosticConfig
+        // and cannot be overridden at runtime
+
+        // Register OpenTelemetry
+        services.AddOpenTelemetryObservability(options =>
+        {
+            options.Environment = environment;
+            options.OtlpEndpoint = otlpEndpoint;
+            options.EnablePrometheusExporter = prometheusEnabled;
+            options.EnableConsoleExporter = consoleEnabled;
+        });
+
+        // Register MetricsHostedService to expose Prometheus metrics endpoint
+        if (prometheusEnabled)
+        {
+            services.AddHostedService<MetricsHostedService>();
+        }
     }
 
     private static void RegisterPersistenceServices(IServiceCollection services, IConfiguration configuration)
@@ -144,15 +194,8 @@ public static class ServiceProviderConfiguration
             ?? Environment.GetEnvironmentVariable("LIGHTNING_SERVER_URL")
             ?? "http://localhost:8090";
 
-        services.AddSingleton<OllamaService>(_ => new OllamaService(
-            baseUrl: configuration["Ollama:BaseUrl"] ?? "http://localhost:11434",
-            defaultModel: configuration["Ollama:DefaultModel"] ?? "gpt-oss:20b"
-        ));
-
-        services.AddSingleton<OllamaSharpService>(_ => new OllamaSharpService(
-            baseUrl: configuration["Ollama:BaseUrl"] ?? "http://localhost:11434",
-            defaultModel: configuration["Ollama:DefaultModel"] ?? "gpt-oss:20b"
-        ));
+        // Register LLM providers using the new provider pattern
+        services.AddLlmProviders(configuration);
 
         services.AddSingleton<LightningStoreOptions>(sp => new LightningStoreOptions
         {
@@ -265,7 +308,6 @@ public static class ServiceProviderConfiguration
     private static void RegisterWorkflowAndAgentServices(IServiceCollection services)
     {
         services.AddSingleton<StateManager>();
-        services.AddSingleton<WorkflowModelConfiguration>();
 
         // Register checkpoint and workflow pause/resume services
         services.AddCheckpointService(options =>
@@ -295,10 +337,12 @@ public static class ServiceProviderConfiguration
 
         // Register agent pipeline service (required by MasterWorkflowService)
         services.AddSingleton<AgentPipelineService>(sp => new AgentPipelineService(
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             new ToolInvocationService(
                 sp.GetRequiredService<IWebSearchProvider>(),
-                sp.GetRequiredService<OllamaService>()
+                sp.GetRequiredService<ILlmProvider>(),
+                sp.GetService<ILogger<ToolInvocationService>>(),
+                sp.GetRequiredService<LlmResponseCache>()
             ),
             sp.GetService<ILogger<AgentPipelineService>>(),
             sp.GetService<ICheckpointService>()
@@ -327,52 +371,59 @@ public static class ServiceProviderConfiguration
 
         // Register agent adapters
         services.AddSingleton<AnalystAgentAdapter>(sp => new AnalystAgentAdapter(
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             new ToolInvocationService(
                 sp.GetRequiredService<IWebSearchProvider>(),
-                sp.GetRequiredService<OllamaService>()
+                sp.GetRequiredService<ILlmProvider>()
             ),
             sp.GetService<ILogger<AnalystAgent>>()
         ));
 
         services.AddSingleton<DraftReportAgentAdapter>(sp => new DraftReportAgentAdapter(
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             sp.GetService<ILogger<DraftReportAgent>>()
         ));
 
         services.AddSingleton<ReportAgentAdapter>(sp => new ReportAgentAdapter(
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             new ToolInvocationService(
                 sp.GetRequiredService<IWebSearchProvider>(),
-                sp.GetRequiredService<OllamaService>()
+                sp.GetRequiredService<ILlmProvider>()
             ),
             sp.GetService<ILogger<ReportAgent>>()
         ));
 
         // Register agents
+        // Register complex agents with cache
         services.AddSingleton<ResearcherAgent>(sp => new ResearcherAgent(
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             new ToolInvocationService(
                 sp.GetRequiredService<IWebSearchProvider>(),
-                sp.GetRequiredService<OllamaService>()
+                sp.GetRequiredService<ILlmProvider>(),
+                sp.GetService<ILogger<ToolInvocationService>>(),
+                sp.GetRequiredService<LlmResponseCache>()
             ),
             sp.GetService<ILogger<ResearcherAgent>>()
         ));
 
         services.AddSingleton<AnalystAgent>(sp => new AnalystAgent(
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             new ToolInvocationService(
                 sp.GetRequiredService<IWebSearchProvider>(),
-                sp.GetRequiredService<OllamaService>()
+                sp.GetRequiredService<ILlmProvider>(),
+                sp.GetService<ILogger<ToolInvocationService>>(),
+                sp.GetRequiredService<LlmResponseCache>()
             ),
             sp.GetService<ILogger<AnalystAgent>>()
         ));
 
         services.AddSingleton<ReportAgent>(sp => new ReportAgent(
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             new ToolInvocationService(
                 sp.GetRequiredService<IWebSearchProvider>(),
-                sp.GetRequiredService<OllamaService>()
+                sp.GetRequiredService<ILlmProvider>(),
+                sp.GetService<ILogger<ToolInvocationService>>(),
+                sp.GetRequiredService<LlmResponseCache>()
             ),
             sp.GetService<ILogger<ReportAgent>>()
         ));
@@ -381,7 +432,7 @@ public static class ServiceProviderConfiguration
         services.AddSingleton<ResearcherWorkflow>(sp => new ResearcherWorkflow(
             sp.GetRequiredService<ILightningStateService>(),
             sp.GetRequiredService<SearCrawl4AIService>(),
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             sp.GetRequiredService<LightningStore>(),
             sp.GetService<IVectorDatabaseService>(),
             sp.GetService<IEmbeddingService>(),
@@ -393,24 +444,27 @@ public static class ServiceProviderConfiguration
         services.AddSingleton<SupervisorWorkflow>(sp => new SupervisorWorkflow(
             sp.GetRequiredService<ILightningStateService>(),
             sp.GetRequiredService<ResearcherWorkflow>(),
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             sp.GetRequiredService<IWebSearchProvider>(),
             sp.GetRequiredService<LightningStore>(),
             sp.GetService<ILogger<SupervisorWorkflow>>(),
             sp.GetRequiredService<StateManager>(),
-            sp.GetRequiredService<WorkflowModelConfiguration>()
+            sp.GetRequiredService<WorkflowModelConfiguration>(),
+            sp.GetRequiredService<LlmResponseCache>()
         ));
 
         services.AddSingleton<MasterWorkflow>(sp => new MasterWorkflow(
             sp.GetRequiredService<ILightningStateService>(),
             sp.GetRequiredService<SupervisorWorkflow>(),
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             sp.GetRequiredService<IWebSearchProvider>(),
             sp.GetService<ILogger<MasterWorkflow>>(),
             sp.GetRequiredService<StateManager>(),
             sp.GetService<ResearcherAgent>(),
             sp.GetService<AnalystAgent>(),
-            sp.GetService<ReportAgent>()
+            sp.GetService<ReportAgent>(),
+            sp.GetService<AsyncMetricsCollector>(),
+            sp.GetRequiredService<LlmResponseCache>()
         ));
     }
 }

@@ -1,6 +1,8 @@
 using System.Text.Json;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
+using DeepResearchAgent.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace DeepResearchAgent.Agents;
@@ -20,14 +22,14 @@ namespace DeepResearchAgent.Agents;
 /// </summary>
 public class ReportAgent
 {
-    private readonly OllamaService _llmService;
+    private readonly ILlmProvider _llmService;
     private readonly ToolInvocationService _toolService;
     private readonly ILogger<ReportAgent>? _logger;
 
     protected virtual string AgentName => "ReportAgent";
 
     public ReportAgent(
-        OllamaService llmService,
+        ILlmProvider llmService,
         ToolInvocationService toolService,
         ILogger<ReportAgent>? logger = null)
     {
@@ -148,7 +150,7 @@ Respond with ONLY the title, nothing else.";
                 new() { Role = "user", Content = titlePrompt }
             };
 
-            var response = await _llmService.InvokeAsync(messages, null, cancellationToken);
+            var response = await _llmService.InvokeAsync(messages, tier: LlmModelTier.Power, cancellationToken: cancellationToken);
             return response.Content?.Trim() ?? $"Research Report: {topic}";
         }
         catch (Exception ex)
@@ -187,7 +189,7 @@ The summary should:
                 new() { Role = "user", Content = summaryPrompt }
             };
 
-            var response = await _llmService.InvokeAsync(messages, null, cancellationToken);
+            var response = await _llmService.InvokeAsync(messages, tier: LlmModelTier.Power, cancellationToken: cancellationToken);
             return response.Content ?? "Executive summary unavailable";
         }
         catch (Exception ex)
@@ -253,7 +255,7 @@ The conclusion should summarize the main takeaways.";
                 new() { Role = "user", Content = conclusionPrompt }
             };
 
-            var response = await _llmService.InvokeAsync(messages, null, cancellationToken);
+            var response = await _llmService.InvokeAsync(messages, tier: LlmModelTier.Power, cancellationToken: cancellationToken);
             sections.Add(new ReportSection
             {
                 Heading = "Conclusion",
@@ -292,8 +294,8 @@ Respond with ONLY the polished content.";
                     new() { Role = "user", Content = polishPrompt }
                 };
 
-                var response = await _llmService.InvokeAsync(messages, null, cancellationToken);
-                
+                var response = await _llmService.InvokeAsync(messages, tier: LlmModelTier.Power, cancellationToken: cancellationToken);
+
                 polishedSections.Add(new ReportSection
                 {
                     Heading = section.Heading,

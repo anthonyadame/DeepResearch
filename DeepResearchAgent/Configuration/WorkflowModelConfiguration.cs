@@ -15,7 +15,7 @@ public class WorkflowModelConfiguration
     /// Default: "qwen2.5-7b" (Qwen2.5-7B on vllm-qwen:8001)
     /// Performance: ~2,500 tok/s, 128K context, excellent reasoning
     /// </summary>
-    public string SupervisorBrainModel { get; set; } = "qwen2.5-7b";
+    public string SupervisorBrainModel { get; set; } = "gpt-oss:20b";
 
     /// <summary>
     /// Model for tool execution and research coordination.
@@ -29,14 +29,14 @@ public class WorkflowModelConfiguration
     /// Default: "qwen2.5-7b" (Qwen2.5-7B - enhanced reasoning for evaluation)
     /// Performance: Superior analytical capability, 128K context for comprehensive analysis
     /// </summary>
-    public string QualityEvaluatorModel { get; set; } = "qwen2.5-7b";
+    public string QualityEvaluatorModel { get; set; } = "mistral-7b";
 
     /// <summary>
     /// Model for red team adversarial critique (requires reasoning).
     /// Default: "qwen2.5-7b" (Qwen2.5-7B - critical thinking capability)
     /// Performance: Latest generation Qwen with improved reasoning
     /// </summary>
-    public string RedTeamModel { get; set; } = "qwen2.5-7b";
+    public string RedTeamModel { get; set; } = "gpt-oss:20b";
 
     /// <summary>
     /// Model for context pruning and fact extraction (requires understanding).

@@ -1,0 +1,143 @@
+{
+  "uid": "deepresearch-masterworkflow",
+  "id": null,
+  "title": "DeepResearch MasterWorkflow Observability",
+  "tags": ["deepresearch", "workflow", "performance"],
+  "timezone": "browser",
+  "schemaVersion": 16,
+  "version": 1,
+  "refresh": "5s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Workflow Execution Rate",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [{"expr": "rate(deepresearch_workflow_steps_total[5m])", "legendFormat": "{{step}}", "refId": "A"}],
+      "yaxes": [{"label": "Steps/sec", "show": true}, {"show": true}]
+    },
+    {
+      "id": 2,
+      "title": "Workflow Step Duration (p95)",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by(le, step) (rate(deepresearch_workflow_step_duration_milliseconds_bucket[5m])))", "legendFormat": "{{step}} - p95", "refId": "A"},
+        {"expr": "histogram_quantile(0.50, sum by(le, step) (rate(deepresearch_workflow_step_duration_milliseconds_bucket[5m])))", "legendFormat": "{{step}} - p50", "refId": "B"}
+      ],
+      "yaxes": [{"label": "Duration (ms)", "show": true}, {"show": true}]
+    },
+    {
+      "id": 3,
+      "title": "Total Workflow Duration",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by(le) (rate(deepresearch_workflow_total_duration_milliseconds_bucket[5m])))", "legendFormat": "p95", "refId": "A"},
+        {"expr": "histogram_quantile(0.50, sum by(le) (rate(deepresearch_workflow_total_duration_milliseconds_bucket[5m])))", "legendFormat": "p50", "refId": "B"},
+        {"expr": "histogram_quantile(0.99, sum by(le) (rate(deepresearch_workflow_total_duration_milliseconds_bucket[5m])))", "legendFormat": "p99", "refId": "C"}
+      ],
+      "yaxes": [{"label": "Duration (ms)", "show": true}, {"show": true}]
+    },
+    {
+      "id": 4,
+      "title": "Workflow Error Rate",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [{"expr": "rate(deepresearch_workflow_errors_total[5m])", "legendFormat": "{{error_type}}", "refId": "A"}],
+      "yaxes": [{"label": "Errors/sec", "show": true}, {"show": true}]
+    },
+    {
+      "id": 5,
+      "title": "LLM Request Duration",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by(le) (rate(deepresearch_llm_request_duration_milliseconds_bucket[5m])))", "legendFormat": "p95", "refId": "A"},
+        {"expr": "histogram_quantile(0.50, sum by(le) (rate(deepresearch_llm_request_duration_milliseconds_bucket[5m])))", "legendFormat": "p50", "refId": "B"}
+      ],
+      "yaxes": [{"label": "Duration (ms)", "show": true}, {"show": true}]
+    },
+    {
+      "id": 6,
+      "title": "LLM Tokens Used",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "targets": [
+        {"expr": "rate(deepresearch_llm_tokens_used_total[5m])", "legendFormat": "Total tokens/sec", "refId": "A"},
+        {"expr": "rate(deepresearch_llm_tokens_prompt_total[5m])", "legendFormat": "Prompt tokens/sec", "refId": "B"},
+        {"expr": "rate(deepresearch_llm_tokens_completion_total[5m])", "legendFormat": "Completion tokens/sec", "refId": "C"}
+      ],
+      "yaxes": [{"label": "Tokens/sec", "show": true}, {"show": true}]
+    },
+    {
+      "id": 7,
+      "title": "Tool Invocation Rate",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+      "targets": [{"expr": "rate(deepresearch_tools_invocations_total[5m])", "legendFormat": "{{tool_name}}", "refId": "A"}],
+      "yaxes": [{"label": "Invocations/sec", "show": true}, {"show": true}]
+    },
+    {
+      "id": 8,
+      "title": "State Cache Hit Rate",
+      "type": "gauge",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+      "targets": [{"expr": "(sum(rate(deepresearch_state_cache_hits_total[5m])) / (sum(rate(deepresearch_state_cache_hits_total[5m])) + sum(rate(deepresearch_state_cache_misses_total[5m])))) * 100 or vector(0)", "legendFormat": "Cache Hit Rate", "refId": "A"}],
+      "options": {"showThresholdLabels": false, "showThresholdMarkers": true},
+      "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"value": 0, "color": "red"}, {"value": 50, "color": "yellow"}, {"value": 80, "color": "green"}]}, "unit": "percent", "min": 0, "max": 100}}
+    },
+    {
+      "id": 10,
+      "title": "Active Workflows",
+      "type": "stat",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 32},
+      "targets": [{"expr": "deepresearch_workflow_active", "legendFormat": "Active", "refId": "A"}],
+      "options": {"colorMode": "value", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}},
+      "fieldConfig": {"defaults": {"thresholds": {"mode": "absolute", "steps": [{"value": 0, "color": "green"}, {"value": 5, "color": "yellow"}, {"value": 10, "color": "red"}]}, "unit": "none", "decimals": 0}}
+    },
+    {
+      "id": 11,
+      "title": "Error Rates by Component",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 18, "x": 6, "y": 32},
+      "targets": [
+        {"expr": "rate(deepresearch_workflow_errors_total[5m])", "legendFormat": "Workflow Errors", "refId": "A"},
+        {"expr": "rate(deepresearch_llm_errors_total[5m])", "legendFormat": "LLM Errors", "refId": "B"},
+        {"expr": "rate(deepresearch_tools_errors_total[5m])", "legendFormat": "Tool Errors", "refId": "C"}
+      ],
+      "yaxes": [{"label": "Errors/sec", "show": true}, {"show": true}],
+      "stack": false,
+      "legend": {"show": true, "alignAsTable": true, "avg": true, "max": true, "values": true}
+    },
+    {
+      "id": 9,
+      "title": "Current Method Execution",
+      "type": "table",
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 40},
+      "targets": [{"expr": "deepresearch_workflow_steps_total", "format": "table", "instant": true, "refId": "A"}],
+      "transformations": [{"id": "organize", "options": {"excludeByName": {}, "indexByName": {}, "renameByName": {"workflow": "Workflow", "step": "Step", "status": "Status", "Value": "Count"}}}]
+    },
+    {
+      "id": 12,
+      "title": "Search Request Rate",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 50},
+      "targets": [{"expr": "rate(deepresearch_search_requests_total[5m])", "legendFormat": "{{provider}}", "refId": "A"}],
+      "yaxes": [{"label": "Requests/sec", "show": true}, {"show": true}],
+      "legend": {"show": true, "alignAsTable": true, "avg": true, "max": true, "values": true}
+    },
+    {
+      "id": 13,
+      "title": "Search Request Duration",
+      "type": "graph",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 50},
+      "targets": [
+        {"expr": "histogram_quantile(0.95, sum by(le, provider) (rate(deepresearch_search_request_duration_milliseconds_bucket[5m])))", "legendFormat": "p95 - {{provider}}", "refId": "A"},
+        {"expr": "histogram_quantile(0.50, sum by(le, provider) (rate(deepresearch_search_request_duration_milliseconds_bucket[5m])))", "legendFormat": "p50 - {{provider}}", "refId": "B"}
+      ],
+      "yaxes": [{"label": "Duration (ms)", "show": true}, {"show": true}],
+      "legend": {"show": true, "alignAsTable": true, "avg": true, "max": true, "values": true}
+    }
+  ]
+}

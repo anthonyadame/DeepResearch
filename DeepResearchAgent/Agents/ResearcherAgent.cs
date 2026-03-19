@@ -1,6 +1,8 @@
 using System.Text.Json;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
+using DeepResearchAgent.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace DeepResearchAgent.Agents;
@@ -20,14 +22,14 @@ namespace DeepResearchAgent.Agents;
 /// </summary>
 public class ResearcherAgent
 {
-    private readonly OllamaService _llmService;
+    private readonly ILlmProvider _llmService;
     private readonly ToolInvocationService _toolService;
     private readonly ILogger<ResearcherAgent>? _logger;
 
     protected virtual string AgentName => "ResearcherAgent";
 
     public ResearcherAgent(
-        OllamaService llmService,
+        ILlmProvider llmService,
         ToolInvocationService toolService,
         ILogger<ResearcherAgent>? logger = null)
     {
@@ -131,8 +133,8 @@ Example: [""subtopic1"", ""subtopic2"", ""subtopic3""]";
                 new() { Role = "user", Content = planPrompt }
             };
 
-            var response = await _llmService.InvokeAsync(messages, null, cancellationToken);
-            
+            var response = await _llmService.InvokeAsync(messages, tier: LlmModelTier.Balanced, cancellationToken: cancellationToken);
+
             // Parse JSON response
             var trimmedResponse = response.Content.Trim();
             if (trimmedResponse.StartsWith("[") && trimmedResponse.EndsWith("]"))
@@ -270,7 +272,7 @@ Respond with ONLY a single number between 0 and 10 (e.g., 7.5)";
                 new() { Role = "user", Content = evalPrompt }
             };
 
-            var response = await _llmService.InvokeAsync(messages, null, cancellationToken);
+            var response = await _llmService.InvokeAsync(messages, tier: LlmModelTier.Balanced, cancellationToken: cancellationToken);
 
             if (float.TryParse(response.Content.Trim(), out var quality))
             {

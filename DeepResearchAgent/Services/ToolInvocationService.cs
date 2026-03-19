@@ -1,6 +1,9 @@
 using DeepResearchAgent.Tools;
 using DeepResearchAgent.Models;
+using DeepResearchAgent.Observability;
 using DeepResearchAgent.Services.WebSearch;
+using DeepResearchAgent.Services.LLM;
+using DeepResearchAgent.Services.Caching;
 using Microsoft.Extensions.Logging;
 
 namespace DeepResearchAgent.Services;
@@ -13,14 +16,17 @@ public class ToolInvocationService
 {
     private readonly ResearchToolsImplementation _tools;
     private readonly ILogger<ToolInvocationService>? _logger;
+    private readonly LlmResponseCache? _llmCache;
 
     public ToolInvocationService(
         IWebSearchProvider searchProvider,
-        OllamaService llmService,
-        ILogger<ToolInvocationService>? logger = null)
+        ILlmProvider llmService,
+        ILogger<ToolInvocationService>? logger = null,
+        LlmResponseCache? llmCache = null)
     {
-        _tools = new ResearchToolsImplementation(searchProvider, llmService, null);
+        _tools = new ResearchToolsImplementation(searchProvider, llmService, null, llmCache);
         _logger = logger;
+        _llmCache = llmCache;
     }
 
     /// <summary>
@@ -32,10 +38,18 @@ public class ToolInvocationService
         Dictionary<string, object> parameters,
         CancellationToken cancellationToken = default)
     {
+        DiagnosticConfig.ToolInvocationsCounter.Add(1);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
         try
         {
             _logger?.LogInformation("Invoking tool: {ToolName} with {ParameterCount} parameters",
                 toolName, parameters.Count);
+
+            if (toolName.ToLowerInvariant() == "summarize")
+            {
+                var test = "";
+            }
 
             var result = toolName.ToLowerInvariant() switch
             {
@@ -53,7 +67,12 @@ public class ToolInvocationService
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Tool invocation failed for: {ToolName}", toolName);
+            DiagnosticConfig.ToolErrors.Add(1);
             throw new InvalidOperationException($"Tool execution failed: {toolName}", ex);
+        }
+        finally
+        {
+            DiagnosticConfig.ToolInvocationDuration.Record(sw.Elapsed.TotalMilliseconds);
         }
     }
 

@@ -137,7 +137,7 @@ services:
       - --num_workers
       - "4"
     volumes:
-      - ./litellm-multi-model.yaml:/app/config.yaml:ro
+      - ../liteLLM/litellm-multi-model.yaml:/app/config.yaml:ro
     networks:
       - lightning-net
     depends_on:
@@ -156,6 +156,7 @@ services:
     restart: unless-stopped
     profiles:
       - qwen35
+      - litellm   
       - all
 
   # ========== PostgreSQL (LiteLLM Logging) ==========

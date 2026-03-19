@@ -1,9 +1,11 @@
 using DeepResearchAgent.Agents;
 using DeepResearchAgent.Configuration;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
 using DeepResearchAgent.Services.StateManagement;
 using DeepResearchAgent.Services.WebSearch;
 using DeepResearchAgent.Workflows;
+using DeepResearchAgent.Workflows.Extensions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -56,11 +58,8 @@ public static class DeepResearchServiceExtensions
         string searxngBaseUrl,
         string crawl4aiBaseUrl)
     {
-        // Ollama Service (LLM)
-        services.AddSingleton<OllamaService>(_ => new OllamaService(
-            baseUrl: ollamaBaseUrl,
-            defaultModel: ollamaDefaultModel
-        ));
+        // LLM Providers (Ollama and LiteLLM)
+        services.AddLlmProviders(configuration);
 
         // Search Service
         services.AddSingleton<SearCrawl4AIService>(sp => new SearCrawl4AIService(
@@ -102,7 +101,7 @@ public static class DeepResearchServiceExtensions
         // Tool Invocation Service (required by agents)
         services.AddSingleton<ToolInvocationService>(sp => new ToolInvocationService(
             sp.GetRequiredService<IWebSearchProvider>(),
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             sp.GetService<ILogger<ToolInvocationService>>()
         ));
 
@@ -123,21 +122,21 @@ public static class DeepResearchServiceExtensions
     {
         // Researcher Agent
         services.AddSingleton<ResearcherAgent>(sp => new ResearcherAgent(
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             sp.GetRequiredService<ToolInvocationService>(),
             sp.GetService<ILogger<ResearcherAgent>>()
         ));
 
         // Analyst Agent
         services.AddSingleton<AnalystAgent>(sp => new AnalystAgent(
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             sp.GetRequiredService<ToolInvocationService>(),
             sp.GetService<ILogger<AnalystAgent>>()
         ));
 
         // Report Agent
         services.AddSingleton<ReportAgent>(sp => new ReportAgent(
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             sp.GetRequiredService<ToolInvocationService>(),
             sp.GetService<ILogger<ReportAgent>>()
         ));
@@ -149,7 +148,7 @@ public static class DeepResearchServiceExtensions
         services.AddSingleton<ResearcherWorkflow>(sp => new ResearcherWorkflow(
             stateService: sp.GetRequiredService<ILightningStateService>(),
             searchService: sp.GetRequiredService<SearCrawl4AIService>(),
-            llmService: sp.GetRequiredService<OllamaService>(),
+            llmService: sp.GetRequiredService<ILlmProvider>(),
             store: sp.GetRequiredService<LightningStore>(),
             vectorDb: null,  // Optional - vector database not configured by default
             embeddingService: null,  // Optional - embedding service not configured by default
@@ -162,7 +161,7 @@ public static class DeepResearchServiceExtensions
         services.AddSingleton<SupervisorWorkflow>(sp => new SupervisorWorkflow(
             sp.GetRequiredService<ILightningStateService>(),
             sp.GetRequiredService<ResearcherWorkflow>(),
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             sp.GetRequiredService<IWebSearchProvider>(),
             sp.GetRequiredService<LightningStore>(),
             sp.GetService<ILogger<SupervisorWorkflow>>()
@@ -172,7 +171,7 @@ public static class DeepResearchServiceExtensions
         services.AddSingleton<MasterWorkflow>(sp => new MasterWorkflow(
             sp.GetRequiredService<ILightningStateService>(),
             sp.GetRequiredService<SupervisorWorkflow>(),
-            sp.GetRequiredService<OllamaService>(),
+            sp.GetRequiredService<ILlmProvider>(),
             sp.GetRequiredService<IWebSearchProvider>(),
             sp.GetService<ILogger<MasterWorkflow>>(),
             stateManager: null,

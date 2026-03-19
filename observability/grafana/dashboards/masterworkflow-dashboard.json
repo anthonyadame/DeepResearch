@@ -1,0 +1,224 @@
+{
+  "dashboard": {
+    "title": "DeepResearch MasterWorkflow Observability",
+    "tags": ["deepresearch", "workflow", "performance"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "5s",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Workflow Execution Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+        "targets": [
+          {
+            "expr": "rate(deepresearch_workflow_steps_total[5m])",
+            "legendFormat": "{{step}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"label": "Steps/sec", "show": true},
+          {"show": true}
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Workflow Step Duration (p95)",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(deepresearch_workflow_step_duration_bucket[5m]))",
+            "legendFormat": "{{step}} - p95",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(deepresearch_workflow_step_duration_bucket[5m]))",
+            "legendFormat": "{{step}} - p50",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {"label": "Duration (ms)", "show": true},
+          {"show": true}
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Total Workflow Duration",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(deepresearch_workflow_total_duration_bucket[5m]))",
+            "legendFormat": "p95",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(deepresearch_workflow_total_duration_bucket[5m]))",
+            "legendFormat": "p50",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, rate(deepresearch_workflow_total_duration_bucket[5m]))",
+            "legendFormat": "p99",
+            "refId": "C"
+          }
+        ],
+        "yaxes": [
+          {"label": "Duration (ms)", "show": true},
+          {"show": true}
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Workflow Error Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+        "targets": [
+          {
+            "expr": "rate(deepresearch_workflow_errors_total[5m])",
+            "legendFormat": "{{error_type}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"label": "Errors/sec", "show": true},
+          {"show": true}
+        ],
+        "alert": {
+          "conditions": [
+            {
+              "evaluator": {"params": [0.1], "type": "gt"},
+              "operator": {"type": "and"},
+              "query": {"params": ["A", "5m", "now"]},
+              "reducer": {"type": "avg"},
+              "type": "query"
+            }
+          ],
+          "name": "Workflow Error Rate Alert"
+        }
+      },
+      {
+        "id": 5,
+        "title": "LLM Request Duration",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(deepresearch_llm_request_duration_bucket[5m]))",
+            "legendFormat": "p95",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.50, rate(deepresearch_llm_request_duration_bucket[5m]))",
+            "legendFormat": "p50",
+            "refId": "B"
+          }
+        ],
+        "yaxes": [
+          {"label": "Duration (ms)", "show": true},
+          {"show": true}
+        ]
+      },
+      {
+        "id": 6,
+        "title": "LLM Tokens Used",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+        "targets": [
+          {
+            "expr": "rate(deepresearch_llm_tokens_total[5m])",
+            "legendFormat": "Tokens/sec",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"label": "Tokens/sec", "show": true},
+          {"show": true}
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Tool Invocation Rate",
+        "type": "graph",
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+        "targets": [
+          {
+            "expr": "rate(deepresearch_tools_invocations_total[5m])",
+            "legendFormat": "{{tool_name}}",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {"label": "Invocations/sec", "show": true},
+          {"show": true}
+        ]
+      },
+      {
+        "id": 8,
+        "title": "State Cache Hit Rate",
+        "type": "gauge",
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+        "targets": [
+          {
+            "expr": "avg(deepresearch_state_cache_hit_rate)",
+            "legendFormat": "Cache Hit Rate",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showThresholdLabels": false,
+          "showThresholdMarkers": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 50, "color": "yellow"},
+                {"value": 80, "color": "green"}
+              ]
+            },
+            "unit": "percent",
+            "min": 0,
+            "max": 100
+          }
+        }
+      },
+      {
+        "id": 9,
+        "title": "Current Method Execution",
+        "type": "table",
+        "gridPos": {"h": 10, "w": 24, "x": 0, "y": 32},
+        "targets": [
+          {
+            "expr": "deepresearch_workflow_steps_total",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {},
+              "indexByName": {},
+              "renameByName": {
+                "workflow": "Workflow",
+                "step": "Step",
+                "status": "Status",
+                "Value": "Count"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

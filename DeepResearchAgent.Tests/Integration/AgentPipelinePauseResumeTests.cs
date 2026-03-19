@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using DeepResearchAgent.Agents;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
+using DeepResearchAgent.Configuration;
 using DeepResearchAgent.Services.Checkpointing;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -19,7 +22,7 @@ public class AgentPipelinePauseResumeTests : IDisposable
 {
     private readonly string _testDirectory;
     private readonly CheckpointService _checkpointService;
-    private readonly Mock<OllamaService> _mockLlmService;
+    private readonly Mock<ILlmProvider> _mockLlmService;
     private readonly Mock<ToolInvocationService> _mockToolService;
     private readonly Mock<ILogger<AgentPipelineService>> _mockLogger;
     private readonly AgentPipelineService _pipelineService;
@@ -29,6 +32,17 @@ public class AgentPipelinePauseResumeTests : IDisposable
         // Setup test directory for checkpoints
         _testDirectory = Path.Combine(Path.GetTempPath(), $"pipeline_pause_resume_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_testDirectory);
+
+        // Setup mock LLM provider
+        _mockLlmService = new Mock<ILlmProvider>();
+        _mockLlmService.Setup(x => x.ProviderName).Returns("mock");
+        _mockLlmService.Setup(x => x.DefaultModel).Returns("mock-model");
+        _mockLlmService.Setup(x => x.InvokeAsync(
+            It.IsAny<List<OllamaChatMessage>>(),
+            It.IsAny<string>(),
+            It.IsAny<LlmModelTier?>(),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OllamaChatMessage { Role = "assistant", Content = "Mock response" });
 
         // Setup checkpoint service
         var checkpointOptions = new CheckpointServiceOptions
@@ -46,8 +60,7 @@ public class AgentPipelinePauseResumeTests : IDisposable
             checkpointOptions,
             mockCheckpointLogger.Object);
 
-        // Setup mocks for agents
-        _mockLlmService = new Mock<OllamaService>("http://localhost:11434", "test-model");
+        // Setup mocks for tools and logger
         _mockToolService = new Mock<ToolInvocationService>(
             MockBehavior.Loose,
             new object[] { null!, null!, null! });

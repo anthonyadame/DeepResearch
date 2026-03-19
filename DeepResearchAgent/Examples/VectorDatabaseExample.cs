@@ -1,5 +1,6 @@
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
 using DeepResearchAgent.Services.VectorDatabase;
 using DeepResearchAgent.Services.StateManagement;
 using DeepResearchAgent.Workflows;
@@ -48,8 +49,11 @@ public class VectorDatabaseExample
 
         // Register core services
         services.AddMemoryCache();
-        services.AddSingleton(new OllamaService(baseUrl: ollamaBaseUrl, defaultModel: ollamaDefaultModel));
-        services.AddSingleton(new HttpClient());
+        services.AddSingleton<HttpClient>();
+        services.AddSingleton<ILlmProvider>(sp => new OllamaLlmProvider(
+            baseUrl: ollamaBaseUrl, 
+            defaultModel: ollamaDefaultModel,
+            httpClient: sp.GetRequiredService<HttpClient>()));
         services.AddSingleton(new SearCrawl4AIService(
             new HttpClient(),
             searxngBaseUrl,

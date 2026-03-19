@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using DeepResearchAgent.Models;
+using DeepResearchAgent.Observability;
 using Microsoft.Extensions.Logging;
 
 namespace DeepResearchAgent.Services.WebSearch;
@@ -40,6 +41,8 @@ public class TavilySearchService : IWebSearchProvider
         List<string>? topics = null,
         CancellationToken cancellationToken = default)
     {
+        DiagnosticConfig.SearchRequestsCounter.Add(1, new KeyValuePair<string, object?>("provider", ProviderName));
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             _logger?.LogInformation(
@@ -131,6 +134,10 @@ public class TavilySearchService : IWebSearchProvider
             throw new InvalidOperationException(
                 $"Tavily web search failed for query: {query}",
                 ex);
+        }
+        finally
+        {
+            DiagnosticConfig.SearchRequestDuration.Record(sw.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("provider", ProviderName));
         }
     }
 

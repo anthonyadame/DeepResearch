@@ -1,0 +1,127 @@
+groups:
+  - name: deepresearch_workflow_alerts
+    interval: 30s
+    rules:
+      # High error rate alert
+      - alert: HighWorkflowErrorRate
+        expr: rate(deepresearch_workflow_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+          component: workflow
+        annotations:
+          summary: "High workflow error rate detected"
+          description: "Workflow error rate is {{ $value }} errors/sec for {{ $labels.workflow }}"
+
+      # Slow workflow execution
+      - alert: SlowWorkflowExecution
+        expr: histogram_quantile(0.95, rate(deepresearch_workflow_total_duration_bucket[5m])) > 300000
+        for: 5m
+        labels:
+          severity: warning
+          component: workflow
+        annotations:
+          summary: "Slow workflow execution detected"
+          description: "P95 workflow duration is {{ $value }}ms (>5 minutes)"
+
+      # Very slow workflow execution
+      - alert: VerySlowWorkflowExecution
+        expr: histogram_quantile(0.95, rate(deepresearch_workflow_total_duration_bucket[5m])) > 600000
+        for: 5m
+        labels:
+          severity: critical
+          component: workflow
+        annotations:
+          summary: "Very slow workflow execution detected"
+          description: "P95 workflow duration is {{ $value }}ms (>10 minutes)"
+
+      # LLM service degradation
+      - alert: LLMServiceDegradation
+        expr: histogram_quantile(0.95, rate(deepresearch_llm_request_duration_bucket[5m])) > 30000
+        for: 3m
+        labels:
+          severity: warning
+          component: llm
+        annotations:
+          summary: "LLM service degradation detected"
+          description: "P95 LLM request duration is {{ $value }}ms (>30 seconds)"
+
+      # Low cache hit rate
+      - alert: LowCacheHitRate
+        expr: avg(deepresearch_state_cache_hit_rate) < 50
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Low cache hit rate detected"
+          description: "State cache hit rate is {{ $value }}% (below 50%)"
+
+      # Tool invocation failures
+      - alert: HighToolInvocationFailureRate
+        expr: rate(deepresearch_tools_invocations_total{status="failed"}[5m]) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          component: tools
+        annotations:
+          summary: "High tool invocation failure rate"
+          description: "Tool {{ $labels.tool_name }} has {{ $value }} failures/sec"
+
+      # Search service issues
+      - alert: SearchServiceDegradation
+        expr: histogram_quantile(0.95, rate(deepresearch_search_request_duration_bucket[5m])) > 10000
+        for: 3m
+        labels:
+          severity: warning
+          component: search
+        annotations:
+          summary: "Search service degradation detected"
+          description: "P95 search request duration is {{ $value }}ms (>10 seconds)"
+
+      # No workflow executions
+      - alert: NoWorkflowExecutions
+        expr: rate(deepresearch_workflow_steps_total[10m]) == 0
+        for: 10m
+        labels:
+          severity: info
+          component: workflow
+        annotations:
+          summary: "No workflow executions detected"
+          description: "No workflow steps have been executed in the last 10 minutes"
+
+      # Step-specific slow execution
+      - alert: SlowWorkflowStep
+        expr: histogram_quantile(0.95, rate(deepresearch_workflow_step_duration_bucket[5m])) > 60000
+        for: 5m
+        labels:
+          severity: warning
+          component: workflow
+        annotations:
+          summary: "Slow workflow step execution"
+          description: "Step {{ $labels.step }} P95 duration is {{ $value }}ms (>1 minute)"
+
+  - name: deepresearch_resource_alerts
+    interval: 30s
+    rules:
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes / 1024 / 1024 / 1024 > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage detected"
+          description: "Process memory usage is {{ $value }}GB (>2GB)"
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: rate(process_cpu_seconds_total[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is {{ $value | humanizePercentage }}"

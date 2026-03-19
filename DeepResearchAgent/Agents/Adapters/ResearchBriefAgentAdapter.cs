@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -21,7 +22,7 @@ public class ResearchBriefAgentAdapter : AgentAdapterBase
     protected override string AgentName => "ResearchBriefAgent";
 
     public ResearchBriefAgentAdapter(
-        OllamaService llmService,
+        ILlmProvider llmService,
         ILogger<ResearchBriefAgent>? logger = null)
     {
         _innerAgent = new ResearchBriefAgent(llmService, logger);

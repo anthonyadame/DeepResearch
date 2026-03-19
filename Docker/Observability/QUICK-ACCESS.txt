@@ -1,0 +1,111 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                   📊 GRAFANA DASHBOARD - QUICK ACCESS                         ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 🌐 ACCESS INFORMATION                                                        │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  Dashboard Name:  DeepResearch MasterWorkflow Observability
+  Dashboard UID:   deepresearch-masterworkflow
+  Folder:          DeepResearch
+
+  🔗 Direct URL:   http://localhost:3001/d/deepresearch-masterworkflow
+
+  🧭 Navigation:   Dashboards → DeepResearch → DeepResearch MasterWorkflow Observability
+
+  🔐 Credentials:  Username: admin
+                   Password: admin
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 🚀 QUICK START                                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  1. Start Observability Stack:
+     cd Docker\Observability
+     .\start-observability.ps1
+
+  2. Access Grafana:
+     Browser → http://localhost:3001
+
+  3. Login:
+     admin / admin
+
+  4. Navigate to Dashboard:
+     Dashboards → DeepResearch → DeepResearch MasterWorkflow Observability
+
+  5. Run Application to See Metrics:
+     cd C:\RepoEx\PhoenixAI\DeepResearch
+     dotnet run --project DeepResearchAgent
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 📊 DASHBOARD PANELS (9 Total)                                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  1. ⚡ Workflow Execution Rate        - Steps/sec
+  2. ⏱️  Workflow Step Duration (p95)   - Performance percentiles
+  3. 🕐 Total Workflow Duration        - End-to-end timing
+  4. ❌ Workflow Error Rate            - Failure tracking
+  5. 🤖 LLM Request Duration           - AI provider latency
+  6. 🎫 LLM Tokens Used                - Token consumption
+  7. 🔧 Tool Invocation Rate           - Tool usage patterns
+  8. 💾 State Cache Hit Rate           - Caching efficiency
+  9. 📋 Current Method Execution       - Live execution table
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 🔍 OTHER OBSERVABILITY TOOLS                                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  Jaeger (Distributed Tracing):
+    URL:     http://localhost:16686
+    Service: DeepResearchAgent
+
+  Prometheus (Metrics):
+    URL:     http://localhost:9090
+    Query:   deepresearch_workflow_steps_total
+
+  AlertManager:
+    URL:     http://localhost:9093
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 🛠️  TROUBLESHOOTING                                                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  Dashboard Not Showing?
+    1. Check services are running:
+       docker-compose -f docker-compose-monitoring.yml ps
+
+    2. Validate dashboard config:
+       .\validate-dashboard.ps1
+
+    3. Check Grafana logs:
+       docker logs deepresearch-grafana
+
+  No Metrics?
+    1. Ensure DeepResearchAgent is running
+    2. Check Prometheus targets: http://localhost:9090/targets
+    3. Verify OpenTelemetry config in appsettings.json
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 📚 DOCUMENTATION                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  RESOLUTION-SUMMARY.md       - Complete fix summary (this issue)
+  VERIFICATION-CHECKLIST.md   - Step-by-step verification
+  DASHBOARD-FIX.md            - Technical details of the fix
+  OBSERVABILITY.md            - Full observability guide
+  README.md                   - Quick reference
+  SETUP-COMPLETE.md           - Setup details
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ✅ VALIDATION                                                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  Dashboard JSON Structure:   ✅ Valid (uid, id, title, 9 panels)
+  Provider Configuration:     ✅ Correct (folder: DeepResearch)
+  Grafana Service:            ✅ Healthy (port 3001)
+  Provisioning Status:        ✅ Complete
+
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                         🎉 DASHBOARD READY TO USE!                            ║
+╚═══════════════════════════════════════════════════════════════════════════════╝

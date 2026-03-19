@@ -2,6 +2,9 @@ using System.Globalization;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Prompts;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
+using DeepResearchAgent.Services.Caching;
+using DeepResearchAgent.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace DeepResearchAgent.Agents;
@@ -19,17 +22,20 @@ namespace DeepResearchAgent.Agents;
 /// </summary>
 public class DraftReportAgent
 {
-    private readonly OllamaService _llmService;
+    private readonly ILlmProvider _llmService;
     private readonly ILogger<DraftReportAgent>? _logger;
+    private readonly LlmResponseCache? _llmCache;
 
     protected virtual string AgentName => "DraftReportAgent";
 
     public DraftReportAgent(
-        OllamaService llmService, 
-        ILogger<DraftReportAgent>? logger = null)
+        ILlmProvider llmService, 
+        ILogger<DraftReportAgent>? logger = null,
+        LlmResponseCache? llmCache = null)
     {
         _llmService = llmService ?? throw new ArgumentNullException(nameof(llmService));
         _logger = logger;
+        _llmCache = llmCache;
     }
 
     /// <summary>
@@ -63,6 +69,7 @@ public class DraftReportAgent
             // Get the raw response first
             var rawResponse = await _llmService.InvokeAsync(
                 ollamaMessages,
+                tier: LlmModelTier.Balanced,  // Use Balanced tier (14B) for draft generation
                 cancellationToken: cancellationToken);
             
             _logger?.LogInformation("DraftReportAgent: Draft generation completed with {ContentLength} characters", 

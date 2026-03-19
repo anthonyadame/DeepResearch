@@ -1,6 +1,7 @@
 using DeepResearchAgent.Agents;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
@@ -36,8 +37,9 @@ public class ClarificationAgentDemo
         // Initialize services
         var ollamaBaseUrl = configuration["Ollama:BaseUrl"] ?? "http://localhost:11434";
         var defaultModel = configuration["Ollama:DefaultModel"] ?? "gpt-oss:20b";
-        
-        var ollamaService = new OllamaService(ollamaBaseUrl, defaultModel);
+
+        var httpClient = new HttpClient();
+        var ollamaService = new OllamaLlmProvider(ollamaBaseUrl, defaultModel, httpClient);
 
         // Load iterative config
         var iterativeConfig = new IterativeClarificationConfig();

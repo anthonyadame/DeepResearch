@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using DeepResearchAgent.Services;
 using DeepResearchAgent.Services.WebSearch;
+using DeepResearchAgent.Services.LLM;
+using DeepResearchAgent.Services.Caching;
 using DeepResearchAgent.Models;
 using Microsoft.Extensions.Logging;
 
@@ -13,17 +15,20 @@ namespace DeepResearchAgent.Tools;
 public class ResearchToolsImplementation
 {
     private readonly IWebSearchProvider _searchProvider;
-    private readonly OllamaService _llmService;
+    private readonly ILlmProvider _llmService;
     private readonly ILogger<ResearchToolsImplementation>? _logger;
+    private readonly LlmResponseCache? _llmCache;
 
     public ResearchToolsImplementation(
         IWebSearchProvider searchProvider,
-        OllamaService llmService,
-        ILogger<ResearchToolsImplementation>? logger = null)
+        ILlmProvider llmService,
+        ILogger<ResearchToolsImplementation>? logger = null,
+        LlmResponseCache? llmCache = null)
     {
         _searchProvider = searchProvider ?? throw new ArgumentNullException(nameof(searchProvider));
         _llmService = llmService ?? throw new ArgumentNullException(nameof(llmService));
         _logger = logger;
+        _llmCache = llmCache;
     }
 
     /// <summary>
@@ -110,7 +115,7 @@ Return your evaluation in this JSON format:
             };
 
             var response = await _llmService.InvokeWithStructuredOutputAsync<QualityEvaluationResult>(
-                messages, cancellationToken: cancellationToken);
+                messages, cache: _llmCache, cancellationToken: cancellationToken);
 
             _logger?.LogInformation("QualityEvaluationTool: Overall score = {Score}", 
                 response.OverallScore);
@@ -160,7 +165,7 @@ Return as JSON with:
             };
 
             var response = await _llmService.InvokeWithStructuredOutputAsync<PageSummaryResult>(
-                messages, cancellationToken: cancellationToken);
+                messages, cache: _llmCache, cancellationToken: cancellationToken);
 
             _logger?.LogInformation("WebpageSummarizationTool: Summary created ({Length} chars)", 
                 response.Summary.Length);
@@ -182,47 +187,47 @@ Return as JSON with:
     public async Task<FactExtractionResult> ExtractFactsAsync(
         [Description("The content to extract facts from")]
         string content,
-        [Description("The topic or domain for fact extraction")]
-        string topic = "general",
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            _logger?.LogInformation("FactExtractionTool: Extracting facts for topic '{Topic}'", topic);
-
-            var prompt = $@"Extract structured facts from the following content about {topic}.
-
-Content:
-{content}
-
-Extract facts in this JSON format:
-{{
-  ""facts"": [
-    {{
-      ""statement"": ""fact statement"",
-      ""confidence"": 0.9,
-      ""source"": ""where it came from in the content"",
-      ""category"": ""fact category""
-    }}
-  ],
-  ""total_facts"": 5
-}}";
-
-            var messages = new List<OllamaChatMessage>
+                [Description("The topic or domain for fact extraction")]
+                string topic = "general",
+                CancellationToken cancellationToken = default)
             {
-                new OllamaChatMessage { Role = "user", Content = prompt }
-            };
+                try
+                {
+                    _logger?.LogInformation("FactExtractionTool: Extracting facts for topic '{Topic}'", topic);
 
-            var response = await _llmService.InvokeWithStructuredOutputAsync<FactExtractionResult>(
-                messages, cancellationToken: cancellationToken);
+                    var prompt = $@"Extract structured facts from the following content about {topic}.
 
-            _logger?.LogInformation("FactExtractionTool: Extracted {FactCount} facts", 
-                response.Facts.Count);
+        Content:
+        {content}
 
-            return response;
-        }
-        catch (Exception ex)
-        {
+        Extract facts in this JSON format:
+        {{
+          ""facts"": [
+            {{
+              ""statement"": ""fact statement"",
+              ""confidence"": 0.9,
+              ""source"": ""where it came from in the content"",
+              ""category"": ""fact category""
+            }}
+          ],
+          ""total_facts"": 5
+        }}";
+
+                    var messages = new List<OllamaChatMessage>
+                    {
+                        new OllamaChatMessage { Role = "user", Content = prompt }
+                    };
+
+                    var response = await _llmService.InvokeWithStructuredOutputAsync<FactExtractionResult>(
+                        messages, cache: _llmCache, cancellationToken: cancellationToken);
+
+                    _logger?.LogInformation("FactExtractionTool: Extracted {FactCount} facts", 
+                        response.Facts.Count);
+
+                    return response;
+                }
+                catch (Exception ex)
+                {
             _logger?.LogError(ex, "FactExtractionTool: Fact extraction failed");
             throw new InvalidOperationException("Fact extraction failed", ex);
         }
@@ -274,7 +279,7 @@ Return as JSON:
             };
 
             var response = await _llmService.InvokeWithStructuredOutputAsync<RefinedDraftResult>(
-                messages, cancellationToken: cancellationToken);
+                messages, cache: _llmCache, cancellationToken: cancellationToken);
 
             _logger?.LogInformation("RefineDraftReportTool: Improvement score = {Score}", 
                 response.ImprovementScore);

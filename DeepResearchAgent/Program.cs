@@ -1,6 +1,10 @@
 ﻿using DeepResearchAgent;
 using DeepResearchAgent.Configuration;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.Caching;
+using DeepResearchAgent.Observability;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 Console.WriteLine("=== Deep Research Agent - C# Implementation ===");
 Console.WriteLine("Multi-agent research system with modern workflow architecture");
@@ -38,15 +42,57 @@ PrintConfigurationSummary(
 // Build service provider
 var serviceProvider = ServiceProviderConfiguration.BuildServiceProvider();
 
+// Initialize ActivityScope with observability configuration (required for distributed tracing to work)
+var observabilityConfig = new ObservabilityConfiguration
+{
+    EnableTracing = true,
+    TraceSamplingRate = 1.0,  // 100% sampling for full visibility
+    EnableMetrics = true,
+    UseAsyncMetrics = false
+};
+ActivityScope.Configure(observabilityConfig);
+
+// Start all hosted services (including MetricsHostedService)
+var hostedServices = serviceProvider.GetServices<IHostedService>();
+var cancellationTokenSource = new CancellationTokenSource();
+
+foreach (var hostedService in hostedServices)
+{
+    await hostedService.StartAsync(cancellationTokenSource.Token);
+}
+
+Console.WriteLine("\n✓ Observability services started");
+Console.WriteLine("  • Metrics endpoint: http://localhost:5000/metrics/");
+Console.WriteLine("  • Distributed tracing enabled: OTLP → http://localhost:4317 (Jaeger)");
+Console.WriteLine("  • Trace sampling: 100% (all requests traced)");
+Console.WriteLine("  • Note: Traces appear in Jaeger after StreamStateAsync is called\n");
+
 // Run console host
 var consoleHost = new ConsoleHost(
     serviceProvider,
     ollamaBaseUrl,
     searxngBaseUrl,
     crawl4aiBaseUrl,
-    lightningServerUrl);
+    lightningServerUrl,
+    serviceProvider.GetRequiredService<LlmResponseCache>());
 
-await consoleHost.RunAsync();
+try
+{
+    await consoleHost.RunAsync();
+}
+finally
+{
+    // Force flush OpenTelemetry traces/metrics before exit to ensure delivery to Jaeger
+    Console.WriteLine("\nFlushing observability data...");
+    TelemetryExtensions.ForceFlush();
+
+    // Stop hosted services on exit
+    Console.WriteLine("Stopping services...");
+    foreach (var hostedService in hostedServices)
+    {
+        await hostedService.StopAsync(cancellationTokenSource.Token);
+    }
+}
 
 // Helper method to print configuration summary
 static void PrintConfigurationSummary(

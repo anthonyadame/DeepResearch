@@ -3,6 +3,9 @@ using System.Text.Json;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Prompts;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
+using DeepResearchAgent.Services.Caching;
+using DeepResearchAgent.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace DeepResearchAgent.Agents;
@@ -20,17 +23,20 @@ namespace DeepResearchAgent.Agents;
 /// </summary>
 public class ResearchBriefAgent
 {
-    private readonly OllamaService _llmService;
+    private readonly ILlmProvider _llmService;
     private readonly ILogger<ResearchBriefAgent>? _logger;
+    private readonly LlmResponseCache? _llmCache;
 
     protected virtual string AgentName => "ResearchBriefAgent";
 
     public ResearchBriefAgent(
-        OllamaService llmService, 
-        ILogger<ResearchBriefAgent>? logger = null)
+        ILlmProvider llmService, 
+        ILogger<ResearchBriefAgent>? logger = null,
+        LlmResponseCache? llmCache = null)
     {
         _llmService = llmService ?? throw new ArgumentNullException(nameof(llmService));
         _logger = logger;
+        _llmCache = llmCache;
     }
 
     /// <summary>
@@ -66,6 +72,8 @@ public class ResearchBriefAgent
             {
                 response = await _llmService.InvokeWithStructuredOutputAsync<ResearchQuestion>(
                     ollamaMessages,
+                    tier: LlmModelTier.Balanced,  // Use Balanced tier (14B) for medium complexity brief generation
+                    cache: _llmCache,
                     cancellationToken: cancellationToken);
             }
             catch (Exception ex)
@@ -83,7 +91,7 @@ public class ResearchBriefAgent
             }
 
             // Fallback: map alternate shape like { question, scope:[], preferences:[] }
-            var rawMessage = await _llmService.InvokeAsync(ollamaMessages, cancellationToken: cancellationToken);
+            var rawMessage = await _llmService.InvokeAsync(ollamaMessages, tier: LlmModelTier.Balanced, cancellationToken: cancellationToken);
             var rawJson = rawMessage.Content ?? "{}";
 
             // Strip accidental code fences

@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using DeepResearchAgent.Agents;
 using DeepResearchAgent.Model;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
+using DeepResearchAgent.Configuration;
 using DeepResearchAgent.Services.Checkpointing;
 using DeepResearchAgent.Services.WebSearch;
 using DeepResearchAgent.Services.Workflows;
@@ -32,16 +34,25 @@ public class MasterWorkflowServiceTests : IAsyncLifetime
         _mockPauseResumeService = new Mock<IWorkflowPauseResumeService>();
 
         // Create a real AgentPipelineService with mocked dependencies
-        var mockOllamaService = new Mock<OllamaService>("http://localhost:11434", "gpt-oss:20b");
+        var mockLlmProvider = new Mock<ILlmProvider>();
+        mockLlmProvider.Setup(x => x.ProviderName).Returns("mock");
+        mockLlmProvider.Setup(x => x.DefaultModel).Returns("mock-model");
+        mockLlmProvider.Setup(x => x.InvokeAsync(
+            It.IsAny<List<OllamaChatMessage>>(),
+            It.IsAny<string>(),
+            It.IsAny<LlmModelTier?>(),
+            It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new OllamaChatMessage { Role = "assistant", Content = "Mock response" });
+
         var mockWebSearchProvider = new Mock<IWebSearchProvider>();
         var toolService = new ToolInvocationService(
             mockWebSearchProvider.Object,
-            mockOllamaService.Object
+            mockLlmProvider.Object
         );
 
         var mockLogger = new Mock<ILogger<AgentPipelineService>>();
         _mockAgentPipeline = new Mock<AgentPipelineService>(
-            mockOllamaService.Object,
+            mockLlmProvider.Object,
             toolService,
             mockLogger.Object);
 

@@ -3,8 +3,11 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
 using DeepResearchAgent.Services.WebSearch;
 using DeepResearchAgent.Services.StateManagement;
+using DeepResearchAgent.Services.Tools;
+using DeepResearchAgent.Services.Caching;
 using DeepResearchAgent.Prompts;
 using DeepResearchAgent.Configuration;
 using Microsoft.Extensions.Logging;
@@ -27,22 +30,25 @@ public class SupervisorWorkflow
 {
     private readonly ILightningStateService _stateService;
     private readonly ResearcherWorkflow _researcher;
-    private readonly OllamaService _llmService;
+    private readonly ILlmProvider _llmService;
     private readonly ToolInvocationService _toolService;
+    private readonly ParallelToolExecutor _parallelExecutor;
     private readonly LightningStore? _store;
     private readonly ILogger<SupervisorWorkflow>? _logger;
     private readonly StateManager? _stateManager;
     private readonly WorkflowModelConfiguration _modelConfig;
+    private readonly LlmResponseCache? _llmCache;
 
     public SupervisorWorkflow(
         ILightningStateService stateService,
         ResearcherWorkflow researcher,
-        OllamaService llmService,
+        ILlmProvider llmService,
         IWebSearchProvider? searchProvider = null,
         LightningStore? store = null,
         ILogger<SupervisorWorkflow>? logger = null,
         StateManager? stateManager = null,
-        WorkflowModelConfiguration? modelConfig = null)
+        WorkflowModelConfiguration? modelConfig = null,
+        LlmResponseCache? llmCache = null)
     {
         _stateService = stateService ?? throw new ArgumentNullException(nameof(stateService));
         _researcher = researcher ?? throw new ArgumentNullException(nameof(researcher));
@@ -51,14 +57,16 @@ public class SupervisorWorkflow
         _logger = logger;
         _stateManager = stateManager;
         _modelConfig = modelConfig ?? new WorkflowModelConfiguration();
-        
+        _llmCache = llmCache;
+
         // Initialize tool invocation service for research execution
         if (searchProvider == null)
         {
             throw new ArgumentNullException(nameof(searchProvider), 
                 "IWebSearchProvider must be provided. Use dependency injection or provide an explicit instance.");
         }
-        _toolService = new ToolInvocationService(searchProvider, llmService, null);
+        _toolService = new ToolInvocationService(searchProvider, llmService, null, llmCache);
+        _parallelExecutor = new ParallelToolExecutor(_toolService, null);
 
         _logger?.LogInformation("SupervisorWorkflow initialized with model configuration: Brain={brain}, Tools={tools}, QualityEvaluator={evaluator}, RedTeam={redteam}, ContextPruner={pruner}",
             _modelConfig.SupervisorBrainModel,
@@ -190,7 +198,7 @@ public class SupervisorWorkflow
 
         try
         {
-            const int maxIterations = 5;
+            const int maxIterations = 10;
             
             // Execute diffusion loop
             for (int iteration = 0; iteration < maxIterations; iteration++)
@@ -390,9 +398,9 @@ Respond concisely with your decision and reasoning.";
             );
 
             var brainModel = _modelConfig.GetModelForFunction(WorkflowFunction.SupervisorBrain);
-            var response = await _llmService.InvokeAsync(messages, model: brainModel, cancellationToken: cancellationToken);
-            
-            _logger?.LogDebug("Brain decision: {length} chars using model {model}", response.Content.Length, brainModel);
+            var response = await _llmService.InvokeAsync(messages, model: brainModel, tier: LlmModelTier.Power, cancellationToken: cancellationToken);
+
+            _logger?.LogDebug("Brain decision: {length} chars using model {model} (Power tier)", response.Content.Length, brainModel);
             
             // Convert OllamaChatMessage to Models.ChatMessage
             return new Models.ChatMessage 
@@ -415,7 +423,7 @@ Respond concisely with your decision and reasoning.";
     /// <summary>
     /// Step 2: Execute Supervisor Tools: Research, refinement, reflection based on brain decision.
     /// Handles tool routing and parallel execution using ToolInvocationService.
-    /// Executes WebSearch → Summarization → FactExtraction pipeline.
+    /// Executes WebSearch → Summarization → FactExtraction pipeline in parallel per result.
     /// Maps to Python lines 750-850
     /// </summary>
     public async Task SupervisorToolsAsync(
@@ -434,9 +442,9 @@ Respond concisely with your decision and reasoning.";
             if (researchTopics.Any())
             {
                 _logger?.LogInformation("Executing tools for {count} research topics", researchTopics.Count);
-                
+
                 // Execute tools for each topic
-                foreach (var topic in researchTopics.Take(3)) // Max 3 topics per iteration
+                foreach (var topic in researchTopics.Take(5)) // Max 3 topics per iteration
                 {
                     try
                     {
@@ -445,12 +453,12 @@ Respond concisely with your decision and reasoning.";
                         var searchParams = new Dictionary<string, object>
                         {
                             { "query", topic },
-                            { "maxResults", 5 }
+                            { "maxResults", 15 }
                         };
-                        
+
                         var searchResults = await _toolService.InvokeToolAsync(
                             "websearch", searchParams, cancellationToken);
-                        
+
                         if (searchResults is not List<WebSearchResult> results)
                         {
                             _logger?.LogWarning("WebSearch returned unexpected type");
@@ -460,47 +468,30 @@ Respond concisely with your decision and reasoning.";
                         _logger?.LogInformation("WebSearch found {count} results for '{Topic}'", 
                             results.Count, topic);
 
-                        // Step 2: For each result, summarize and extract facts
-                        foreach (var result in results)
+                        // Step 2: For each result, summarize and extract facts in parallel
+                        var processingResults = await _parallelExecutor.ExecuteResultsParallelAsync(
+                            results, topic, cancellationToken);
+
+                        foreach (var (result, summary, facts) in processingResults)
                         {
                             try
                             {
-                                // Summarize the content
-                                var summaryParams = new Dictionary<string, object>
+                                if (summary == null)
                                 {
-                                    { "pageContent", result.Content },
-                                    { "maxLength", 300 }
-                                };
-                                
-                                var summarized = await _toolService.InvokeToolAsync(
-                                    "summarize", summaryParams, cancellationToken);
-
-                                if (summarized is not PageSummaryResult summary)
-                                {
-                                    _logger?.LogWarning("Summarization returned unexpected type");
+                                    _logger?.LogWarning("Summarization returned null for {Url}", result.Url);
                                     continue;
                                 }
 
                                 _logger?.LogDebug("Summarized content from: {Url}", result.Url);
 
-                                // Extract facts from the summary
-                                var factParams = new Dictionary<string, object>
+                                if (facts == null)
                                 {
-                                    { "content", summary.Summary },
-                                    { "topic", topic }
-                                };
-                                
-                                var factResult = await _toolService.InvokeToolAsync(
-                                    "extractfacts", factParams, cancellationToken);
-
-                                if (factResult is not FactExtractionResult extracted)
-                                {
-                                    _logger?.LogWarning("FactExtraction returned unexpected type");
+                                    _logger?.LogWarning("FactExtraction returned null for {Url}", result.Url);
                                     continue;
                                 }
 
                                 // Add extracted facts to knowledge base
-                                foreach (var fact in extracted.Facts)
+                                foreach (var fact in facts.Facts)
                                 {
                                     var factModel = new Models.FactState
                                     {
@@ -510,7 +501,7 @@ Respond concisely with your decision and reasoning.";
                                         ExtractedAt = DateTime.UtcNow,
                                         IsDisputed = false
                                     };
-                                    
+
                                     state.KnowledgeBase.Add(factModel);
                                     _logger?.LogDebug("Added fact: {Statement} (confidence: {Confidence})", 
                                         fact.Statement.Substring(0, Math.Min(50, fact.Statement.Length)), 
@@ -518,7 +509,7 @@ Respond concisely with your decision and reasoning.";
                                 }
 
                                 _logger?.LogInformation("Extracted {count} facts from {Source}", 
-                                    extracted.Facts.Count, result.Url);
+                                    facts.Facts.Count, result.Url);
                             }
                             catch (Exception resultEx)
                             {
@@ -599,7 +590,7 @@ Respond concisely with your decision and reasoning.";
             }
 
             // Optional: LLM-based quality assessment for final iteration
-            if (state.ResearchIterations >= 3 && state.KnowledgeBase.Count > 0)
+            if (state.ResearchIterations >= 15 && state.KnowledgeBase.Count > 0)
             {
                 score = await GetLLMQualityScoreAsync(state, score, cancellationToken);
             }
@@ -627,7 +618,7 @@ Respond concisely with your decision and reasoning.";
 
 Research Brief: {state.ResearchBrief}
 
-Current Draft: {state.DraftReport.Substring(0, Math.Min(500, state.DraftReport.Length))}...
+Current Draft: {state.DraftReport.Substring(0, Math.Min(1500, state.DraftReport.Length))}...
 
 Knowledge Base Size: {state.KnowledgeBase.Count} facts
 
@@ -646,6 +637,7 @@ Respond with ONLY a number between 0 and 10.";
                     new() { Role = "system", Content = evaluationPrompt }
                 },
                 model: evaluatorModel,
+                tier: LlmModelTier.Power,
                 cancellationToken: cancellationToken
             );
 
@@ -690,7 +682,7 @@ Review this draft and identify:
 5. Bias or one-sided arguments
 
 Draft to critique:
-{draftReport.Substring(0, Math.Min(800, draftReport.Length))}...
+{draftReport.Substring(0, Math.Min(1600, draftReport.Length))}...
 
 If the draft is solid with no major issues, respond with: PASS
 
@@ -703,6 +695,7 @@ Otherwise, provide specific, actionable critique.";
                     new() { Role = "system", Content = redTeamPrompt }
                 },
                 model: redTeamModel,
+                tier: LlmModelTier.Power,
                 cancellationToken: cancellationToken
             );
 
@@ -762,6 +755,7 @@ If you identify no new facts, respond with: NO_NEW_FACTS";
                     new() { Role = "system", Content = pruningPrompt }
                 },
                 model: prunerModel,
+                tier: LlmModelTier.Power,
                 cancellationToken: cancellationToken
             );
 

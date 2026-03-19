@@ -1,10 +1,12 @@
 using DeepResearchAgent.Configuration;
 using DeepResearchAgent.Services;
 using DeepResearchAgent.Services.Checkpointing;
+using DeepResearchAgent.Observability;
 using DeepResearch.Api.Services.Auth;
 using DeepResearch.Api.Services.Chat;
 using DeepResearch.Api.Extensions;
 using DeepResearch.Api.Middleware;
+using DeepResearch.Api.HealthChecks;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.DataProtection;
@@ -13,6 +15,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
+using OpenTelemetry.Metrics;
 using System.IO;
 using System.Text;
 
@@ -37,6 +42,12 @@ public class Startup
     /// </summary>
     public void ConfigureServices(IServiceCollection services)
     {
+        // Configure Observability (must be first to initialize ActivityScope)
+        ConfigureObservability(services);
+
+        // Configure OpenTelemetry exporters
+        ConfigureOpenTelemetry(services);
+
         // Add Core Services
         services.AddScoped<IWorkflowPauseResumeService, WorkflowPauseResumeService>();
         services.AddCheckpointService(options =>
@@ -172,6 +183,104 @@ public class Startup
                 }
             };
         });
+    }
+
+    /// <summary>
+    /// Configure observability settings from appsettings.json
+    /// </summary>
+    private void ConfigureObservability(IServiceCollection services)
+    {
+        // Load ObservabilityConfiguration from appsettings
+        var observabilityConfig = new ObservabilityConfiguration();
+        _configuration.GetSection("Observability").Bind(observabilityConfig);
+
+        // Validate configuration
+        observabilityConfig.Validate();
+
+        // Configure ActivityScope globally
+        ActivityScope.Configure(observabilityConfig);
+
+        // Register as singleton for DI (optional, for services that need configuration)
+        services.AddSingleton(observabilityConfig);
+
+        // Register AsyncMetricsCollector if enabled
+        if (observabilityConfig.UseAsyncMetrics)
+        {
+            services.AddHostedService<AsyncMetricsCollector>();
+            services.AddSingleton<AsyncMetricsCollector>(sp => 
+                sp.GetServices<IHostedService>()
+                    .OfType<AsyncMetricsCollector>()
+                    .FirstOrDefault()!);
+        }
+
+        // Add health check for metrics queue
+        services.AddHealthChecks()
+            .AddCheck<MetricsQueueHealthCheck>(
+                "metrics_queue",
+                tags: new[] { "observability", "metrics" });
+
+        // Log configuration summary
+        var logger = services.BuildServiceProvider().GetService<ILogger<Startup>>();
+        logger?.LogInformation("Observability Configuration Loaded:\n{Summary}", observabilityConfig.GetSummary());
+    }
+
+    /// <summary>
+    /// Configure OpenTelemetry tracing and metrics exporters
+    /// </summary>
+    private void ConfigureOpenTelemetry(IServiceCollection services)
+    {
+        // Get configuration
+        var observabilityConfig = services.BuildServiceProvider().GetService<ObservabilityConfiguration>();
+
+        if (observabilityConfig == null || !observabilityConfig.EnableTracing && !observabilityConfig.EnableMetrics)
+        {
+            return; // Skip if observability is disabled
+        }
+
+        services.AddOpenTelemetry()
+            .ConfigureResource(resourceBuilder =>
+            {
+                resourceBuilder
+                    .AddService(
+                        serviceName: DiagnosticConfig.ServiceName,
+                        serviceVersion: DiagnosticConfig.ServiceVersion)
+                    .AddAttributes(new Dictionary<string, object>
+                    {
+                        ["deployment.environment"] = _configuration["ASPNETCORE_ENVIRONMENT"] ?? "development",
+                        ["host.name"] = Environment.MachineName
+                    });
+            })
+            .WithTracing(tracerProviderBuilder =>
+            {
+                if (observabilityConfig.EnableTracing)
+                {
+                    tracerProviderBuilder
+                        .AddSource(DiagnosticConfig.ServiceName)
+                        .AddAspNetCoreInstrumentation(options =>
+                        {
+                            options.RecordException = observabilityConfig.EnableExceptionRecording;
+                        })
+                        .AddHttpClientInstrumentation()
+                        .AddOtlpExporter(options =>
+                        {
+                            // Export to Jaeger (OTLP endpoint)
+                            options.Endpoint = new Uri(_configuration["OpenTelemetry:OtlpEndpoint"] ?? "http://localhost:4317");
+                            options.Protocol = OpenTelemetry.Exporter.OtlpExportProtocol.Grpc;
+                        })
+                        .SetSampler(new TraceIdRatioBasedSampler(observabilityConfig.TraceSamplingRate));
+                }
+            })
+            .WithMetrics(meterProviderBuilder =>
+            {
+                if (observabilityConfig.EnableMetrics)
+                {
+                    meterProviderBuilder
+                        .AddMeter(DiagnosticConfig.ServiceName)
+                        .AddAspNetCoreInstrumentation()
+                        .AddHttpClientInstrumentation()
+                        .AddRuntimeInstrumentation();
+                }
+            });
     }
 
     /// <summary>

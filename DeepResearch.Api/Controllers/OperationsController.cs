@@ -1,5 +1,6 @@
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
 using DeepResearchAgent.Services.StateManagement;
 using DeepResearchAgent.Workflows;
 using Microsoft.AspNetCore.Mvc;
@@ -11,7 +12,7 @@ namespace DeepResearch.Api.Controllers;
 [Route("api")]
 public class OperationsController : ControllerBase
 {
-    private readonly OllamaService _ollamaService;
+    private readonly ILlmProvider _ollamaService;
     private readonly SearCrawl4AIService _searchAndScrapeService;
     private readonly HttpClient _httpClient;
     private readonly IAgentLightningService _lightningService;
@@ -23,7 +24,7 @@ public class OperationsController : ControllerBase
     private readonly ILogger<OperationsController> _logger;
 
     public OperationsController(
-        OllamaService ollamaService,
+        ILlmProvider ollamaService,
         SearCrawl4AIService searchAndScrapeService,
         HttpClient httpClient,
         IAgentLightningService lightningService,

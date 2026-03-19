@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
 
 namespace DeepResearch.Api.Controllers;
 
@@ -11,11 +12,11 @@ namespace DeepResearch.Api.Controllers;
 [Produces("application/json")]
 public class ConfigurationController : ControllerBase
 {
-    private readonly OllamaService _ollamaService;
+    private readonly ILlmProvider _ollamaService;
     private readonly ILogger<ConfigurationController> _logger;
 
     public ConfigurationController(
-        OllamaService ollamaService,
+        ILlmProvider ollamaService,
         ILogger<ConfigurationController> logger)
     {
         _ollamaService = ollamaService;

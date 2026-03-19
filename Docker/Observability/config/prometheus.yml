@@ -1,0 +1,137 @@
+# Prometheus Configuration for DeepResearch Observability
+# Updated with DeepResearchAgent workflow metrics
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels:
+    cluster: 'deepresearch'
+    environment: 'development'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # DEEPRESEARCH AGENT METRICS (NEW - MasterWorkflow Instrumentation)
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  # DeepResearch Agent Metrics (Console App with Prometheus HttpListener)
+  - job_name: 'deepresearch-agent'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['host.docker.internal:5000']  # Prometheus HttpListener on port 5000
+    metrics_path: '/metrics/'  # Note: HttpListener requires trailing slash
+    relabel_configs:
+      - target_label: stack
+        replacement: 'agent'
+      - target_label: service
+        replacement: 'workflow'
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # CORE STACK METRICS
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  # Redis Cache Metrics (Core Stack)
+  - job_name: 'redis-exporter'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+      - target_label: stack
+        replacement: 'core'
+      - target_label: service
+        replacement: 'cache'
+
+  # InfluxDB Metrics (Core Stack)
+  - job_name: 'influxdb'
+    static_configs:
+      - targets: ['influxdb:8086']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    relabel_configs:
+      - target_label: stack
+        replacement: 'core'
+      - target_label: service
+        replacement: 'timeseries'
+      - target_label: instance
+        replacement: 'influxdb:8086'
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # AI STACK METRICS
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  # Qdrant Vector Database Metrics (AI Stack)
+  - job_name: 'qdrant'
+    static_configs:
+      - targets: ['qdrant:6333']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    relabel_configs:
+      - target_label: stack
+        replacement: 'ai'
+      - target_label: service
+        replacement: 'vectordb'
+      - target_label: instance
+        replacement: 'qdrant:6333'
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # MONITORING STACK (Self-monitoring)
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  # OpenTelemetry Collector Metrics (DISABLED - not currently used)
+  # DeepResearchAgent metrics go directly to Prometheus via HttpListener
+  # Traces go directly to Jaeger via OTLP
+  # Uncomment if you start routing metrics through OTel Collector
+  #- job_name: 'otel-collector'
+  #  scrape_interval: 10s
+  #  static_configs:
+  #    - targets: ['otel-collector:8889']  # Collected metrics (not 8888)
+  #  relabel_configs:
+  #    - target_label: stack
+  #      replacement: 'monitoring'
+  #    - target_label: service
+  #      replacement: 'otel-collector'
+
+  # Jaeger Metrics
+  - job_name: 'jaeger'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['jaeger:14269']
+    relabel_configs:
+      - target_label: stack
+        replacement: 'monitoring'
+      - target_label: service
+        replacement: 'jaeger'
+
+  # AlertManager Metrics
+  - job_name: 'alertmanager'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['alertmanager:9093']
+    relabel_configs:
+      - target_label: stack
+        replacement: 'monitoring'
+      - target_label: service
+        replacement: 'alertmanager'
+# Example: --storage.tsdb.path=/prometheus --storage.tsdb.retention.time=30d

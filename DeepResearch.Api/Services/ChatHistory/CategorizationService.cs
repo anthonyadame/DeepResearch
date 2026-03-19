@@ -1,4 +1,5 @@
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
 
 namespace DeepResearch.Api.Services.ChatHistory;
 
@@ -15,7 +16,7 @@ public interface ICategorizationService
 /// </summary>
 public class OllamaCategorizationService : ICategorizationService
 {
-    private readonly OllamaService _ollama;
+    private readonly ILlmProvider _ollama;
     private readonly ILogger<OllamaCategorizationService> _logger;
     
     private const string CategorizationPrompt = @"Analyze this chat conversation and suggest 2-3 relevant category tags.
@@ -33,7 +34,7 @@ Recent Messages:
 Respond with ONLY the tags separated by commas. Example: web-development, api-design, authentication";
 
     public OllamaCategorizationService(
-        OllamaService ollama,
+        ILlmProvider ollama,
         ILogger<OllamaCategorizationService> logger)
     {
         _ollama = ollama;

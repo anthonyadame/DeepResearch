@@ -1,5 +1,6 @@
 using DeepResearchAgent.Services;
 using DeepResearchAgent.Models;
+using DeepResearchAgent.Observability;
 using Microsoft.Extensions.Caching.Memory;
 using System.Collections.Concurrent;
 using System.Text.Json;
@@ -185,10 +186,12 @@ public class LightningStateService : ILightningStateService
         if (_cache.TryGetValue(cacheKey, out AgentStateModel? cached) && cached != null)
         {
             _metrics.RecordCacheHit();
+            DiagnosticConfig.StateCacheHits.Add(1);
             return cached;
         }
 
         _metrics.RecordCacheMiss();
+        DiagnosticConfig.StateCacheMisses.Add(1);
 
         try
         {
@@ -283,6 +286,7 @@ public class LightningStateService : ILightningStateService
             _cache.Set(cacheKey, state, TimeSpan.FromMinutes(CACHE_DURATION_MINUTES));
 
             _metrics.RecordOperation("SetAgentState", 0);
+            DiagnosticConfig.StateOperationsCounter.Add(1);
         }
         finally
         {
@@ -336,10 +340,12 @@ public class LightningStateService : ILightningStateService
         if (_cache.TryGetValue(cacheKey, out ResearchStateModel? cached) && cached != null)
         {
             _metrics.RecordCacheHit();
+            DiagnosticConfig.StateCacheHits.Add(1);
             return cached;
         }
 
         _metrics.RecordCacheMiss();
+        DiagnosticConfig.StateCacheMisses.Add(1);
 
         try
         {
@@ -428,6 +434,7 @@ public class LightningStateService : ILightningStateService
             _cache.Set(cacheKey, state, TimeSpan.FromMinutes(CACHE_DURATION_MINUTES));
 
             _metrics.RecordOperation("SetResearchState", 0);
+            DiagnosticConfig.StateOperationsCounter.Add(1);
         }
         finally
         {
@@ -468,10 +475,12 @@ public class LightningStateService : ILightningStateService
         if (_cache.TryGetValue(cacheKey, out VerificationStateModel? cached) && cached != null)
         {
             _metrics.RecordCacheHit();
+            DiagnosticConfig.StateCacheHits.Add(1);
             return cached;
         }
 
         _metrics.RecordCacheMiss();
+        DiagnosticConfig.StateCacheMisses.Add(1);
 
         try
         {
@@ -567,6 +576,7 @@ public class LightningStateService : ILightningStateService
             _cache.Set(cacheKey, state, TimeSpan.FromMinutes(CACHE_DURATION_MINUTES));
 
             _metrics.RecordOperation("SetVerificationState", 0);
+            DiagnosticConfig.StateOperationsCounter.Add(1);
         }
         finally
         {
@@ -583,10 +593,12 @@ public class LightningStateService : ILightningStateService
         if (_cache.TryGetValue(cacheKey, out List<VerificationStateModel>? cached) && cached != null)
         {
             _metrics.RecordCacheHit();
+            DiagnosticConfig.StateCacheHits.Add(1);
             return cached;
         }
 
         _metrics.RecordCacheMiss();
+        DiagnosticConfig.StateCacheMisses.Add(1);
 
         try
         {

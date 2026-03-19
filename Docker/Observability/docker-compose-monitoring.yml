@@ -6,11 +6,45 @@ services:
   # ═══════════════════════════════════════════════════════════════════════════════
   # MONITORING STACK - Observability, Metrics, Tracing, Alerting
   # ═══════════════════════════════════════════════════════════════════════════════
-  # This stack provides comprehensive monitoring across all 4 stacks
-  # Scrapes metrics from Core, AI, and Websearch stacks via shared network
+  # Comprehensive observability for DeepResearch using OpenTelemetry
+  # Monitors: Core Stack, AI Stack, WebSearch Stack, and DeepResearchAgent
   # ═══════════════════════════════════════════════════════════════════════════════
 
-  # Prometheus for metrics collection
+  # Jaeger - Distributed Tracing (Updated with OTLP support)
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: deepresearch-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+      - METRICS_STORAGE_TYPE=prometheus
+    ports:
+      - "5775:5775/udp"   # Accept zipkin.thrift over compact thrift protocol
+      - "6831:6831/udp"   # Accept jaeger.thrift over compact thrift protocol
+      - "6832:6832/udp"   # Accept jaeger.thrift over binary thrift protocol
+      - "5778:5778"       # Serve configs
+      - "16686:16686"     # Serve frontend (Jaeger UI)
+      - "14268:14268"     # Accept jaeger.thrift directly from clients
+      - "14250:14250"     # Accept model.proto
+      - "9411:9411"       # Accept zipkin spans
+      - "4317:4317"       # OTLP gRPC receiver
+      - "4318:4318"       # OTLP HTTP receiver
+    networks:
+      - deepresearch-hub
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:16686/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Prometheus - Metrics Collection
   prometheus:
     image: prom/prometheus:latest
     container_name: deepresearch-prometheus
@@ -20,17 +54,20 @@ services:
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
       - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=30d'
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./alerts.yml:/etc/prometheus/alerts.yml
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     networks:
       - deepresearch-hub
     restart: unless-stopped
+    depends_on:
+      - alertmanager
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --spider http://localhost:9090/-/healthy || exit 1"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,23 +78,23 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # AlertManager for alert routing
+  # AlertManager - Alert Management
   alertmanager:
     image: prom/alertmanager:latest
     container_name: deepresearch-alertmanager
     command:
-      - '--config.file=/etc/alertmanager/config.yml'
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--storage.path=/alertmanager'
     ports:
       - "9093:9093"
     volumes:
-      - ./alertmanager-config.yml:/etc/alertmanager/config.yml
+      - ./config/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
     networks:
       - deepresearch-hub
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --spider http://localhost:9093/-/healthy || exit 1"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -68,29 +105,32 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Grafana for visualization
+  # Grafana - Dashboards and Visualization
   grafana:
     image: grafana/grafana:latest
     container_name: deepresearch-grafana
+    ports:
+      - "3001:3000"  # Changed from 3000 to avoid conflict with open-webui
+    volumes:
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - grafana-data:/var/lib/grafana
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_INSTALL_PLUGINS=grafana-piechart-panel
-    ports:
-      - "3001:3000"
-    volumes:
-      - ./grafana-dashboard.json:/etc/grafana/provisioning/dashboards/deepresearch.json
-      - ./grafana-datasource.yml:/etc/grafana/provisioning/datasources/prometheus.yml
-      - grafana-data:/var/lib/grafana
+      - GF_SERVER_ROOT_URL=http://localhost:3001
     networks:
       - deepresearch-hub
     restart: unless-stopped
     depends_on:
       prometheus:
         condition: service_healthy
+      jaeger:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -101,53 +141,29 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # OpenTelemetry Collector
+  # OpenTelemetry Collector (Optional - Advanced Setup)
   otel-collector:
-    image: otel/opentelemetry-collector:latest
+    image: otel/opentelemetry-collector-contrib:latest
     container_name: deepresearch-otel-collector
-    command: ["--config=/etc/otel-collector-config.yml"]
+    ports:
+      - "4319:4317"     # OTLP gRPC receiver (alternative port to avoid conflict)
+      - "4320:4318"     # OTLP HTTP receiver (alternative port)
+      - "8888:8888"     # Prometheus metrics exposed by the collector
+      - "8889:8889"     # Prometheus exporter metrics
+      - "13133:13133"   # health_check extension
     volumes:
-      - ./otel-collector-config.yml:/etc/otel-collector-config.yml
-    ports:
-      - "4317:4317"   # OTLP gRPC receiver
-      - "4318:4318"   # OTLP HTTP receiver
-      - "8889:8889"   # Prometheus metrics exporter (changed from 8888)
-      - "13133:13133" # health_check extension
+      - ./config/otel-collector-config.yml:/etc/otel-collector-config.yml:ro
+    command: ["--config=/etc/otel-collector-config.yml"]
     networks:
       - deepresearch-hub
     restart: unless-stopped
+    depends_on:
+      jaeger:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --spider http://localhost:13133 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  # Jaeger for distributed tracing
-  jaeger:
-    image: jaegertracing/all-in-one:latest
-    container_name: deepresearch-jaeger
-    environment:
-      - COLLECTOR_OTLP_ENABLED=true
-    ports:
-      - "5775:5775/udp"
-      - "6831:6831/udp"
-      - "6832:6832/udp"
-      - "5778:5778"
-      - "16686:16686"  # Jaeger UI
-      - "14268:14268"
-      - "14250:14250"
-      - "9411:9411"
-    networks:
-      - deepresearch-hub
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "sh", "-c", "wget --quiet --tries=1 --spider http://localhost:16686/api/health || exit 1"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:13133"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -165,6 +181,8 @@ networks:
 
 volumes:
   prometheus-data:
-  alertmanager-data:
+    driver: local
   grafana-data:
-  deepresearch-data:
+    driver: local
+  alertmanager-data:
+    driver: local

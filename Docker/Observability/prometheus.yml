@@ -1,34 +1,64 @@
-# Prometheus Configuration for DeepResearch Workflow Monitoring
+# Prometheus Configuration for DeepResearch Observability
+# Updated with DeepResearchAgent workflow metrics
 
 global:
-  scrape_interval: 15s
-  evaluation_interval: 15s
+  scrape_interval: 5s
+  evaluation_interval: 5s
   external_labels:
-    cluster: 'deepresearch-production'
-    environment: 'production'
+    cluster: 'deepresearch'
+    environment: 'development'
 
 # Alertmanager configuration
 alerting:
   alertmanagers:
     - static_configs:
         - targets:
-            - 'alertmanager:9093'
+            - alertmanager:9093
 
-# Load alerting rules
+# Load rules once and periodically evaluate them
 rule_files:
-  - 'alerts.yml'
+  - '/etc/prometheus/rules/*.yml'
 
-# Scrape configurations for 4-stack architecture
-# ✅ WORKING TARGETS: Services with actual /metrics or working health endpoints
-# ⚠️ NOTE: Many services require instrumentation libraries or metric exporters
-# Services without /metrics endpoints are excluded until proper exporters are added
+# Scrape configurations
 scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
   # ═══════════════════════════════════════════════════════════════════════════════
-  # CORE STACK METRICS (Working)
+  # DEEPRESEARCH AGENT METRICS (NEW - MasterWorkflow Instrumentation)
   # ═══════════════════════════════════════════════════════════════════════════════
 
-  # Redis Cache Metrics (Core Stack) - ✅ WORKING
-  # Uses redis_exporter which exposes /metrics endpoint
+  # DeepResearch Agent Metrics
+  - job_name: 'deepresearch-agent'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['host.docker.internal:8080']  # Adjust port as needed
+    metrics_path: '/metrics'
+    relabel_configs:
+      - target_label: stack
+        replacement: 'agent'
+      - target_label: service
+        replacement: 'workflow'
+
+  # DeepResearch Monitoring Service
+  - job_name: 'deepresearch-monitoring'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['host.docker.internal:5000']  # Adjust port as needed
+    metrics_path: '/metrics'
+    relabel_configs:
+      - target_label: stack
+        replacement: 'monitoring'
+      - target_label: service
+        replacement: 'api'
+
+  # ═══════════════════════════════════════════════════════════════════════════════
+  # CORE STACK METRICS
+  # ═══════════════════════════════════════════════════════════════════════════════
+
+  # Redis Cache Metrics (Core Stack)
   - job_name: 'redis-exporter'
     static_configs:
       - targets: ['redis-exporter:9121']
@@ -43,8 +73,7 @@ scrape_configs:
       - target_label: service
         replacement: 'cache'
 
-  # InfluxDB Metrics (Core Stack) - ✅ WORKING
-  # InfluxDB exposes /metrics endpoint with Prometheus format
+  # InfluxDB Metrics (Core Stack)
   - job_name: 'influxdb'
     static_configs:
       - targets: ['influxdb:8086']
@@ -60,11 +89,10 @@ scrape_configs:
         replacement: 'influxdb:8086'
 
   # ═══════════════════════════════════════════════════════════════════════════════
-  # AI STACK METRICS (Working)
+  # AI STACK METRICS
   # ═══════════════════════════════════════════════════════════════════════════════
 
-  # Qdrant Vector Database Metrics (AI Stack) - ✅ WORKING
-  # Qdrant exposes /metrics endpoint
+  # Qdrant Vector Database Metrics (AI Stack)
   - job_name: 'qdrant'
     static_configs:
       - targets: ['qdrant:6333']
@@ -80,22 +108,39 @@ scrape_configs:
         replacement: 'qdrant:6333'
 
   # ═══════════════════════════════════════════════════════════════════════════════
-  # WEBSEARCH STACK METRICS (Partial)
-  # ═══════════════════════════════════════════════════════════════════════════════
-  # Note: Crawl4AI health endpoint returns JSON, not Prometheus metrics format
-
-  # ═══════════════════════════════════════════════════════════════════════════════
   # MONITORING STACK (Self-monitoring)
   # ═══════════════════════════════════════════════════════════════════════════════
 
-  # Prometheus Self-Monitoring
-  - job_name: 'prometheus'
+  # OpenTelemetry Collector Metrics
+  - job_name: 'otel-collector'
+    scrape_interval: 10s
     static_configs:
-      - targets: ['localhost:9090']
-    metrics_path: '/metrics'
-    scrape_interval: 15s
-    scrape_timeout: 10s
+      - targets: ['otel-collector:8888']
+    relabel_configs:
+      - target_label: stack
+        replacement: 'monitoring'
+      - target_label: service
+        replacement: 'otel-collector'
 
-# Storage configuration is handled via command-line flags in docker-compose
-# These settings are applied via the Prometheus container command parameters
+  # Jaeger Metrics
+  - job_name: 'jaeger'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['jaeger:14269']
+    relabel_configs:
+      - target_label: stack
+        replacement: 'monitoring'
+      - target_label: service
+        replacement: 'jaeger'
+
+  # AlertManager Metrics
+  - job_name: 'alertmanager'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['alertmanager:9093']
+    relabel_configs:
+      - target_label: stack
+        replacement: 'monitoring'
+      - target_label: service
+        replacement: 'alertmanager'
 # Example: --storage.tsdb.path=/prometheus --storage.tsdb.retention.time=30d

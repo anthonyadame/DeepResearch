@@ -3,6 +3,8 @@ using System.Globalization;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Prompts;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
+using DeepResearchAgent.Services.Caching;
 using Microsoft.Extensions.Logging;
 
 namespace DeepResearchAgent.Agents;
@@ -28,10 +30,11 @@ public class ClarifyIterativeAgent : ClarifyAgent
     protected override string AgentName => "ClarifyIterativeAgent";
 
     public ClarifyIterativeAgent(
-        OllamaService llmService,
+        ILlmProvider llmService,
         IterativeClarificationConfig config,
-        ILogger<ClarifyIterativeAgent>? logger = null)
-        : base(llmService, logger)
+        ILogger<ClarifyIterativeAgent>? logger = null,
+        LlmResponseCache? llmCache = null)
+        : base(llmService, logger, llmCache)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
     }
@@ -226,6 +229,7 @@ public class ClarifyIterativeAgent : ClarifyAgent
 
         var critique = await _llmService.InvokeWithStructuredOutputAsync<CritiqueFeedback>(
             ollamaMessages,
+            cache: _llmCache,
             cancellationToken: cancellationToken);
 
         return critique;
@@ -255,6 +259,7 @@ public class ClarifyIterativeAgent : ClarifyAgent
 
         var metrics = await _llmService.InvokeWithStructuredOutputAsync<QualityMetrics>(
             ollamaMessages,
+            cache: _llmCache,
             cancellationToken: cancellationToken);
 
         return metrics;
@@ -287,6 +292,7 @@ public class ClarifyIterativeAgent : ClarifyAgent
 
         var refined = await _llmService.InvokeWithStructuredOutputAsync<ClarificationResult>(
             ollamaMessages,
+            cache: _llmCache,
             cancellationToken: cancellationToken);
 
         return refined;

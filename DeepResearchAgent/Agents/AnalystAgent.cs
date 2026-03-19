@@ -1,6 +1,8 @@
 using System.Text.Json;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
+using DeepResearchAgent.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace DeepResearchAgent.Agents;
@@ -20,14 +22,14 @@ namespace DeepResearchAgent.Agents;
 /// </summary>
 public class AnalystAgent
 {
-    private readonly OllamaService _llmService;
+    private readonly ILlmProvider _llmService;
     private readonly ToolInvocationService _toolService;
     private readonly ILogger<AnalystAgent>? _logger;
 
     protected virtual string AgentName => "AnalystAgent";
 
     public AnalystAgent(
-        OllamaService llmService,
+        ILlmProvider llmService,
         ToolInvocationService toolService,
         ILogger<AnalystAgent>? logger = null)
     {
@@ -126,7 +128,7 @@ Respond with a single average quality score (0-10), just the number.";
                 new() { Role = "user", Content = evalPrompt }
             };
 
-            var response = await _llmService.InvokeAsync(messages, null, cancellationToken);
+            var response = await _llmService.InvokeAsync(messages, tier: LlmModelTier.Balanced, cancellationToken: cancellationToken);
 
             if (float.TryParse(response.Content.Trim(), out var quality))
             {
@@ -170,7 +172,7 @@ Example: [""theme1"", ""theme2"", ""theme3""]";
                 new() { Role = "user", Content = themePrompt }
             };
 
-            var response = await _llmService.InvokeAsync(messages, null, cancellationToken);
+            var response = await _llmService.InvokeAsync(messages, tier: LlmModelTier.Balanced, cancellationToken: cancellationToken);
             var trimmedResponse = response.Content.Trim();
 
             if (trimmedResponse.StartsWith("[") && trimmedResponse.EndsWith("]"))
@@ -221,7 +223,7 @@ Respond with a JSON array of objects, each with fields: fact_1, fact_2, explanat
                 new() { Role = "user", Content = contradictPrompt }
             };
 
-            var response = await _llmService.InvokeAsync(messages, null, cancellationToken);
+            var response = await _llmService.InvokeAsync(messages, tier: LlmModelTier.Balanced, cancellationToken: cancellationToken);
             var trimmedResponse = response.Content.Trim();
 
             if (trimmedResponse.StartsWith("["))
@@ -266,7 +268,7 @@ Respond with ONLY a number (0-10).";
                     new() { Role = "user", Content = importancePrompt }
                 };
 
-                var response = await _llmService.InvokeAsync(messages, null, cancellationToken);
+                var response = await _llmService.InvokeAsync(messages, tier: LlmModelTier.Balanced, cancellationToken: cancellationToken);
 
                 if (float.TryParse(response.Content.Trim(), out var importance))
                 {
@@ -350,7 +352,7 @@ Write a paragraph (5-8 sentences) that:
                 new() { Role = "user", Content = synthesisPrompt }
             };
 
-            var response = await _llmService.InvokeAsync(messages, null, cancellationToken);
+            var response = await _llmService.InvokeAsync(messages, tier: LlmModelTier.Balanced, cancellationToken: cancellationToken);
             return response.Content ?? "No synthesis available";
         }
         catch (Exception ex)

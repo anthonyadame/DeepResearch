@@ -1,0 +1,56 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+  external_labels:
+    cluster: 'deepresearch'
+    environment: 'development'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # DeepResearch Agent Metrics
+  - job_name: 'deepresearch-agent'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['host.docker.internal:8080']  # Adjust port as needed
+    metrics_path: '/metrics'
+
+  # DeepResearch Monitoring Service
+  - job_name: 'deepresearch-monitoring'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['host.docker.internal:5000']  # Adjust port as needed
+    metrics_path: '/metrics'
+
+  # OpenTelemetry Collector Metrics
+  - job_name: 'otel-collector'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['otel-collector:8888']
+
+  # Jaeger Metrics
+  - job_name: 'jaeger'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['jaeger:14269']
+
+  # AlertManager Metrics
+  - job_name: 'alertmanager'
+    scrape_interval: 10s
+    static_configs:
+      - targets: ['alertmanager:9093']

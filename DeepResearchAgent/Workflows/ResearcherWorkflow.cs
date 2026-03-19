@@ -1,6 +1,7 @@
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Prompts;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
 using DeepResearchAgent.Services.StateManagement;
 using DeepResearchAgent.Services.VectorDatabase;
 using Microsoft.Extensions.Logging;
@@ -29,7 +30,7 @@ public class ResearcherWorkflow
 {
     private readonly ILightningStateService _stateService;
     private readonly SearCrawl4AIService _searchService;
-    private readonly OllamaService _llmService;
+    private readonly ILlmProvider _llmService;
     private readonly LightningStore _store;
     private readonly IVectorDatabaseService? _vectorDb;
     private readonly IEmbeddingService? _embeddingService;
@@ -40,7 +41,7 @@ public class ResearcherWorkflow
     public ResearcherWorkflow(
         ILightningStateService stateService,
         SearCrawl4AIService searchService,
-        OllamaService llmService,
+        ILlmProvider llmService,
         LightningStore store,
         IVectorDatabaseService? vectorDb = null,
         IEmbeddingService? embeddingService = null,
@@ -117,7 +118,7 @@ public class ResearcherWorkflow
             var researcherState = CreateResearcherState(topic);
             
             // Execute ReAct loop: LLM → Tools → Loop
-            const int maxIterations = 5;
+            const int maxIterations = 8;
             for (int iteration = 0; iteration < maxIterations; iteration++)
             {
                 _logger?.LogDebug("Research iteration {iter}/{max}", iteration + 1, maxIterations);

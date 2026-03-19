@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -21,7 +22,7 @@ public class DraftReportAgentAdapter : AgentAdapterBase
     protected override string AgentName => "DraftReportAgent";
 
     public DraftReportAgentAdapter(
-        OllamaService llmService,
+        ILlmProvider llmService,
         ILogger<DraftReportAgent>? logger = null)
     {
         _innerAgent = new DraftReportAgent(llmService, logger);

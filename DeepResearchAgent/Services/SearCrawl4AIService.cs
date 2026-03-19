@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Text.Json;
 using DeepResearchAgent.Models;
+using DeepResearchAgent.Observability;
 
 namespace DeepResearchAgent.Services;
 
@@ -44,6 +45,9 @@ public class SearCrawl4AIService : ISearCrawl4AIService
         int maxResults = 10, 
         CancellationToken cancellationToken = default)
     {
+        DiagnosticConfig.SearchRequestsCounter.Add(1, new KeyValuePair<string, object?>("provider", "searxng"));
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
         var cacheKey = $"search::{query}::{maxResults}";
         if (_enableCaching && TryGetCached(_searchCache, cacheKey, out var cachedSearch))
         {
@@ -114,6 +118,10 @@ public class SearCrawl4AIService : ISearCrawl4AIService
             _logger?.LogError(ex, "Error searching SearXNG for query: {Query}", query);
             throw new InvalidOperationException($"SearXNG search failed: {ex.Message}", ex);
         }
+        finally
+        {
+            DiagnosticConfig.SearchRequestDuration.Record(sw.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("provider", "searxng"));
+        }
     }
 
     /// <summary>
@@ -124,7 +132,9 @@ public class SearCrawl4AIService : ISearCrawl4AIService
         Crawl4AIRequest? options = null,
         CancellationToken cancellationToken = default)
     {
-        
+        DiagnosticConfig.SearchRequestsCounter.Add(1, new KeyValuePair<string, object?>("provider", "crawl4ai"));
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
         var cacheKey = $"scrape::{string.Join('|', urls)}";
         if (_enableCaching && TryGetCached(_scrapeCache, cacheKey, out var cachedScrape))
         {
@@ -202,6 +212,10 @@ public class SearCrawl4AIService : ISearCrawl4AIService
                 Success = false,
                 ErrorMessage = ex.Message
             };
+        }
+        finally
+        {
+            DiagnosticConfig.SearchRequestDuration.Record(sw.Elapsed.TotalMilliseconds, new KeyValuePair<string, object?>("provider", "crawl4ai"));
         }
     }
 

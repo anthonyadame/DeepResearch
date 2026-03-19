@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
@@ -27,7 +28,7 @@ public class ResearcherAgentAdapter : AgentAdapterBase
     protected override string AgentName => "ResearcherAgent";
 
     public ResearcherAgentAdapter(
-        OllamaService llmService,
+        ILlmProvider llmService,
         ToolInvocationService toolService,
         ILogger<ResearcherAgent>? logger = null)
     {

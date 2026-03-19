@@ -1,8 +1,11 @@
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
+using DeepResearchAgent.Services.Caching;
 using DeepResearchAgent.Services.StateManagement;
 using DeepResearchAgent.Workflows;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text;
 using System.Text.Json;
 
 namespace DeepResearchAgent;
@@ -17,19 +20,23 @@ public class ConsoleHost
     private readonly string _searxngBaseUrl;
     private readonly string _crawl4aiBaseUrl;
     private readonly string _lightningServerUrl;
+    private readonly LlmResponseCache? _llmCache;
+    private string _selectedLlmProvider = "ollama";
 
     public ConsoleHost(
         ServiceProvider serviceProvider,
         string ollamaBaseUrl,
         string searxngBaseUrl,
         string crawl4aiBaseUrl,
-        string lightningServerUrl)
+        string lightningServerUrl,
+        LlmResponseCache? llmCache = null)
     {
         _serviceProvider = serviceProvider;
         _ollamaBaseUrl = ollamaBaseUrl;
         _searxngBaseUrl = searxngBaseUrl;
         _crawl4aiBaseUrl = crawl4aiBaseUrl;
         _lightningServerUrl = lightningServerUrl;
+        _llmCache = llmCache;
     }
 
     /// <summary>
@@ -54,27 +61,33 @@ public class ConsoleHost
             switch (choice)
             {
                 case "1":
-                    await CheckOllamaConnection();
+                    SelectLlmProvider();
                     break;
                 case "2":
-                    await CheckSearXNGConnection();
+                    await CheckLiteLlmConnection();
                     break;
                 case "3":
-                    await CheckCrawl4AIConnection();
+                    await CheckOllamaConnection();
                     break;
                 case "4":
-                    await CheckLightningConnection();
+                    await CheckSearXNGConnection();
                     break;
                 case "5":
-                    await RunWorkflowOrchestration();
+                    await CheckCrawl4AIConnection();
                     break;
                 case "6":
-                    await RunAllHealthChecks();
+                    await CheckLightningConnection();
                     break;
                 case "7":
-                    await PullOllamaModel("gpt-oss:20b");
+                    await RunWorkflowOrchestration();
                     break;
                 case "8":
+                    await RunAllHealthChecks();
+                    break;
+                case "9":
+                    await PullOllamaModel("gpt-oss:20b");
+                    break;
+                case "10":
                     await PullOllamaModel("mistral:7b");
                     break;
                 case "0":
@@ -86,7 +99,7 @@ public class ConsoleHost
                     break;
             }
 
-            if (running && choice is "1" or "2" or "3" or "4" or "5" or "6" or "7" or "8")
+            if (running && choice is "1" or "2" or "3" or "4" or "5" or "6" or "7" or "8" or "9" or "10")
             {
                 Console.WriteLine("\nPress any key to continue...");
                 Console.ReadKey();
@@ -102,17 +115,94 @@ public class ConsoleHost
         Console.WriteLine("║     Deep Research Agent - Main Menu                    ║");
         Console.WriteLine("╚════════════════════════════════════════════════════════╝");
         Console.WriteLine();
-        Console.WriteLine("  [1] 🔍 Check Ollama Connection");
-        Console.WriteLine("  [2] 🌐 Check SearXNG Connection");
-        Console.WriteLine("  [3] 🕷️  Check Crawl4AI Connection");
-        Console.WriteLine("  [4] ⚡ Check Agent-Lightning Connection");
-        Console.WriteLine("  [5] ⚙️  Run Workflow Orchestration");
-        Console.WriteLine("  [6] 🏥 Run All Health Checks");
-        Console.WriteLine("  [7] 📥 Pull GPT-OSS Model (gpt-oss:20b)");
-        Console.WriteLine("  [8] 📥 Pull Mistral Model (mistral:7b)");
+        Console.WriteLine($"  Current LLM Provider: {_selectedLlmProvider.ToUpper()}");
+        Console.WriteLine();
+        Console.WriteLine("  [1] 🔧 Select LLM Provider (liteLLM or Ollama)");
+        Console.WriteLine("  [2] 🔍 Check liteLLM Connection");
+        Console.WriteLine("  [3] 🔍 Check Ollama Connection");
+        Console.WriteLine("  [4] 🌐 Check SearXNG Connection");
+        Console.WriteLine("  [5] 🕷️  Check Crawl4AI Connection");
+        Console.WriteLine("  [6] ⚡ Check Agent-Lightning Connection");
+        Console.WriteLine("  [7] ⚙️  Run Workflow Orchestration");
+        Console.WriteLine("  [8] 🏥 Run All Health Checks");
+        Console.WriteLine("  [9] 📥 Pull GPT-OSS Model (gpt-oss:20b)");
+        Console.WriteLine("  [10] 📥 Pull Mistral Model (mistral:7b)");
         Console.WriteLine("  [0] 🚪 Exit");
         Console.WriteLine();
         Console.Write("Enter your choice: ");
+    }
+
+    private void SelectLlmProvider()
+    {
+        Console.WriteLine("\n" + new string('═', 60));
+        Console.WriteLine("🔧 SELECT LLM PROVIDER");
+        Console.WriteLine(new string('═', 60));
+        Console.WriteLine();
+        Console.WriteLine("  [1] liteLLM");
+        Console.WriteLine("  [2] Ollama");
+        Console.WriteLine();
+        Console.Write("Enter your choice: ");
+        var choice = Console.ReadLine()?.Trim();
+
+        switch (choice)
+        {
+            case "1":
+                _selectedLlmProvider = "litellm";
+                Console.WriteLine("\n✅ LLM Provider set to: liteLLM");
+                break;
+            case "2":
+                _selectedLlmProvider = "ollama";
+                Console.WriteLine("\n✅ LLM Provider set to: Ollama");
+                break;
+            default:
+                Console.WriteLine("\n❌ Invalid choice. Provider unchanged.");
+                break;
+        }
+    }
+
+    private async Task CheckLiteLlmConnection()
+    {
+        Console.WriteLine("\n" + new string('═', 60));
+        Console.WriteLine("🔍 CHECKING LITELLM CONNECTION");
+        Console.WriteLine(new string('═', 60));
+
+        try
+        {
+            var llmProvider = _serviceProvider.GetRequiredService<ILlmProvider>();
+
+            if (llmProvider.ProviderName?.ToLower() != "litellm")
+            {
+                Console.WriteLine("⚠️  Warning: Current LLM provider is not liteLLM");
+                Console.WriteLine($"➤ Current Provider: {llmProvider.ProviderName}");
+                Console.WriteLine("\n📝 To use liteLLM:");
+                Console.WriteLine("   1. Update appsettings.json: LlmProvider.Provider = 'litellm'");
+                Console.WriteLine("   2. Restart the application");
+                return;
+            }
+
+            Console.WriteLine($"➤ Provider: {llmProvider.ProviderName}");
+            Console.WriteLine($"➤ Default Model: {llmProvider.DefaultModel}");
+
+            // Test invocation
+            Console.WriteLine("\n➤ Testing liteLLM connection...");
+            var testMessages = new List<OllamaChatMessage>
+            {
+                new() { Role = "user", Content = "Say 'Hello from Deep Research Agent!' in one sentence." }
+            };
+
+            var response = await llmProvider.InvokeAsync(testMessages);
+            Console.WriteLine($"✓ Response: {response.Content}");
+
+            Console.WriteLine("\n✅ LITELLM CONNECTION: SUCCESS");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ ERROR: {ex.Message}");
+            Console.WriteLine("\n📝 Troubleshooting:");
+            Console.WriteLine("   1. Start liteLLM service");
+            Console.WriteLine("   2. Verify configuration in appsettings.json");
+            Console.WriteLine("   3. Check LiteLLM.BaseUrl in appsettings.json");
+        }
     }
 
     private async Task CheckOllamaConnection()
@@ -123,76 +213,31 @@ public class ConsoleHost
 
         try
         {
-            var ollamaService = _serviceProvider.GetRequiredService<OllamaService>();
+            var ollamaService = _serviceProvider.GetRequiredService<ILlmProvider>();
 
             Console.WriteLine($"➤ Endpoint: {_ollamaBaseUrl}");
-            Console.WriteLine("➤ Checking health...");
+            Console.WriteLine($"➤ Default Model: {ollamaService.DefaultModel}");
+            Console.WriteLine($"➤ Provider: {ollamaService.ProviderName}");
 
-            var isHealthy = await ollamaService.IsHealthyAsync();
-
-            if (isHealthy)
+            // Test invocation
+            Console.WriteLine("\n➤ Testing LLM connection...");
+            var testMessages = new List<OllamaChatMessage>
             {
-                Console.WriteLine("✓ Ollama is running and healthy\n");
+                new() { Role = "user", Content = "Say 'Hello from Deep Research Agent!' in one sentence." }
+            };
 
-                Console.WriteLine("➤ Fetching available models...");
-                var models = await ollamaService.GetAvailableModelsAsync();
+            var response = await ollamaService.InvokeAsync(testMessages);
+            Console.WriteLine($"✓ Response: {response.Content}");
 
-                if (models.Any())
-                {
-                    Console.WriteLine($"✓ Found {models.Count()} model(s):");
-                    foreach (var model in models.Take(10))
-                    {
-                        Console.WriteLine($"  • {model}");
-                    }
-                    if (models.Count() > 5)
-                    {
-                        Console.WriteLine($"  ... and {models.Count() - 10} more");
-                    }
-                }
-                else
-                {
-                    Console.WriteLine("⚠ No models found. Run: ollama pull mistral:7b");
-                }
-
-                foreach (var model in models.Where(x => x.Contains("mistral") || x.Contains("gpt-oss")).Take(2))
-                {
-                    var message = new List<OllamaChatMessage>
-                    {
-                        new() { Role = "user", Content = "Say 'Hello from Deep Research Agent!' in one sentence." }
-                    };
-
-                    var modelInfo = await ollamaService.InvokeAsync(message, model);
-                    Console.WriteLine($"\n➤ Model Info for '{model}':");
-                    Console.WriteLine(JsonSerializer.Serialize(modelInfo.Content, new JsonSerializerOptions { WriteIndented = true }));
-                }
-
-                // Test invocation
-                Console.WriteLine("\n➤ Testing LLM invocation...");
-                var testMessages = new List<OllamaChatMessage>
-                {
-                    new() { Role = "user", Content = "Say 'Hello from Deep Research Agent!' in one sentence." }
-                };
-
-                var response = await ollamaService.InvokeAsync(testMessages);
-                Console.WriteLine($"✓ Response: {response.Content}");
-
-                Console.WriteLine("\n✅ OLLAMA CONNECTION: SUCCESS");
-            }
-            else
-            {
-                Console.WriteLine($"❌ Ollama is not accessible at {_ollamaBaseUrl}");
-                Console.WriteLine("\n📝 To start Ollama:");
-                Console.WriteLine("   ollama serve");
-            }
+            Console.WriteLine("\n✅ LLM CONNECTION: SUCCESS");
         }
         catch (Exception ex)
         {
             Console.WriteLine($"❌ ERROR: {ex.Message}");
             Console.WriteLine("\n📝 Troubleshooting:");
-            Console.WriteLine("   1. Start Ollama: ollama serve");
-            Console.WriteLine("   2. Pull a model: ollama pull gpt-oss:20b");
-            Console.WriteLine("   3. Pull a model: ollama pull mistral:7b");
-            Console.WriteLine($"   4. Verify endpoint: {_ollamaBaseUrl}");
+            Console.WriteLine("   1. Start LLM service (Ollama/LiteLLM)");
+            Console.WriteLine("   2. Verify configuration in appsettings.json");
+            Console.WriteLine($"   3. Check endpoint: {_ollamaBaseUrl}");
         }
     }
 
@@ -334,7 +379,8 @@ public class ConsoleHost
             Console.WriteLine(new string('-', 60));
             Console.WriteLine("  [1] ComplexQuery: Space");
             Console.WriteLine("  [2] ComplexQuery: Splinternet");
-            Console.WriteLine("  [3] User Query");
+            Console.WriteLine("  [3] Semi-Autonomous Dev Query");
+            Console.WriteLine("  [4] User Query");
             Console.WriteLine();
             Console.Write("Enter your choice: ");
             var queryChoice = Console.ReadLine()?.Trim();
@@ -352,6 +398,10 @@ public class ConsoleHost
                     Console.WriteLine($"\nUsing ComplexQuery: Splinternet");
                     break;
                 case "3":
+                    query = TestPrompts.ComplexSemiAutonomousDev;
+                    Console.WriteLine($"\nUsing Semi-Autonomous Dev Query");
+                    break;
+                case "4":
                     Console.Write("\nEnter your research query: ");
                     query = Console.ReadLine()?.Trim();
                     if (string.IsNullOrEmpty(query))
@@ -370,26 +420,39 @@ public class ConsoleHost
             Console.WriteLine("\n➤ Starting workflow execution...\n");
             Console.WriteLine(new string('-', 60));
 
+            StreamState finalResponse = null;
+
             await foreach (var response in masterWorkflow.StreamStateAsync(query))
             {
                 WriteStreamStateFields(response);
+                await SaveWorkflowReportsAsync(response);
+
+                finalResponse = response;
 
                 if (!string.IsNullOrWhiteSpace(response.Status) && response.Status.Contains("clarification_needed", StringComparison.OrdinalIgnoreCase))
                 {
                     var clarificationText = queryChoice == "1" 
                         ? TestPrompts.ClarifiedQuerySpace 
-                        : TestPrompts.ClarifiedQuerySplinternet;
-                    
+                        : queryChoice == "2"
+                            ? TestPrompts.ClarifiedQuerySplinternet
+                            : TestPrompts.ClarifiedSemiAutonomousDev;
+
                     var clarifiedQuery = query + "\n\nclarification_provided: " + clarificationText;
 
                     await foreach (var clarifyresponse in masterWorkflow.StreamStateAsync(clarifiedQuery))
                     {
                         WriteStreamStateFields(clarifyresponse);
+
                     }
                 }
             }
 
             Console.WriteLine("✓ Workflow execution completed successfully.\n");
+
+            
+
+            // Display cache metrics if available
+            DisplayCacheMetrics();
 
             Console.WriteLine(new string('-', 60));
             Console.WriteLine("\n✅ WORKFLOW EXECUTION: COMPLETE");
@@ -403,11 +466,58 @@ public class ConsoleHost
         }
     }
 
+    private void DisplayCacheMetrics()
+    {
+        if (_llmCache == null)
+        {
+            Console.WriteLine("ℹ️  LLM Response Cache: Not enabled");
+            return;
+        }
+
+        try
+        {
+            var stats = _llmCache.GetStatistics();
+            Console.WriteLine("\n" + new string('═', 60));
+            Console.WriteLine("📊 LLM RESPONSE CACHE METRICS");
+            Console.WriteLine(new string('═', 60));
+            Console.WriteLine($"  Cache Hits:        {stats.TotalHits}");
+            Console.WriteLine($"  Cache Misses:      {stats.TotalMisses}");
+            Console.WriteLine($"  Total Entries:     {stats.TotalEntries}");
+
+            if (stats.TotalHits + stats.TotalMisses > 0)
+            {
+                var hitRate = stats.HitRate * 100;
+                Console.WriteLine($"  Hit Rate:          {hitRate:F1}%");
+
+                if (hitRate >= 80)
+                {
+                    Console.WriteLine("  Status:            ✅ Excellent (≥80%)");
+                }
+                else if (hitRate >= 50)
+                {
+                    Console.WriteLine("  Status:            ⚠️  Good (50-80%)");
+                }
+                else
+                {
+                    Console.WriteLine("  Status:            ℹ️  Fair (<50%)");
+                }
+            }
+            Console.WriteLine(new string('═', 60) + "\n");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️  Could not display cache metrics: {ex.Message}\n");
+        }
+    }
+
     private async Task RunAllHealthChecks()
     {
         Console.WriteLine("\n" + new string('═', 60));
         Console.WriteLine("🏥 RUNNING ALL HEALTH CHECKS");
         Console.WriteLine(new string('═', 60));
+
+        await CheckLiteLlmConnection();
+        Console.WriteLine();
 
         await CheckOllamaConnection();
         Console.WriteLine();
@@ -461,52 +571,12 @@ public class ConsoleHost
         Console.WriteLine($"📦 PULLING OLLAMA MODEL: {modelName}");
         Console.WriteLine(new string('═', 60));
 
-        try
-        {
-            Console.WriteLine($"➤ Model: {modelName}");
-            Console.WriteLine("➤ Pulling model from Ollama...\n");
+        Console.WriteLine($"➤ Model: {modelName}");
+        Console.WriteLine("➤ Model pulling temporarily disabled");
+        Console.WriteLine($"  Please run: ollama pull {modelName}");
+        Console.WriteLine("\n📝 Model pulling will be re-implemented with ILlmProvider");
 
-            var ollamaService = _serviceProvider.GetRequiredService<OllamaSharpService>();
-            var lastUpdate = DateTimeOffset.MinValue;
-            string? lastStatus = null;
-            long? lastCompleted = null;
-            var hadUpdates = false;
-
-            await foreach (var update in ollamaService.PullModelStreamingAsync(modelName))
-            {
-                // Clear the current line and write the updated status
-                Console.SetCursorPosition(0, Console.CursorTop);
-                if (update.Percent > 1)
-                {
-                    Console.Write($"Completed: {update.Percent.ToString("0.00")}");
-                }
-                else if(update.Percent >= 100)
-                {
-                    Console.Write($"Status: {update.Status} - Completed: {100}%");
-                }
-                
-            }
-
-            Console.WriteLine($"\n✓ Model '{modelName}' pulled successfully");
-            Console.WriteLine("\n✅ PULL OPERATION: SUCCESS");
-        }
-        catch (InvalidOperationException ex)
-        {
-            Console.WriteLine($"❌ ERROR: {ex.Message}");
-            Console.WriteLine("\n📝 Troubleshooting:");
-            Console.WriteLine("   1. Ensure Ollama is running: ollama serve");
-            Console.WriteLine("   2. Verify the model name is correct");
-            Console.WriteLine("   3. Check your internet connection");
-            Console.WriteLine($"   4. Verify endpoint: {_ollamaBaseUrl}");
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"❌ ERROR: {ex.Message}");
-            Console.WriteLine("\n📝 Troubleshooting:");
-            Console.WriteLine("   1. Ensure Ollama is running: ollama serve");
-            Console.WriteLine("   2. Verify the model name is correct");
-            Console.WriteLine("   3. Check your internet connection");
-        }
+        await Task.CompletedTask;
     }
 
     private static bool TryParsePullProgress(
@@ -557,6 +627,93 @@ public class ConsoleHost
     private static string FormatDigest(string? digest)
     {
         return string.IsNullOrWhiteSpace(digest) ? string.Empty : $" (digest: {digest})";
+    }
+
+    private async Task SaveWorkflowReportsAsync(StreamState response)
+    {
+        try
+        {
+            // Create report directory
+            string reportDir = Path.Combine("Report", response.ResearchId.ToString());
+            Directory.CreateDirectory(reportDir);
+
+            // Individual markdown files
+            var reportFiles = new Dictionary<string, string?>
+            {
+                { "01_UserQuery.md", response.UserQuery },
+                { "02_BriefPreview.md", response.BriefPreview },
+                { "03_ResearchBrief.md", response.ResearchBrief },
+                { "04_DraftReport.md", response.DraftReport },
+                { "05_RefinedSummary.md", response.RefinedSummary },
+                { "06_SupervisorUpdate.md", response.SupervisorUpdate },
+                { "07_FinalReport.md", response.FinalReport }
+            };
+
+            // Save individual files
+            foreach (var (filename, content) in reportFiles)
+            {
+                if (!string.IsNullOrWhiteSpace(content))
+                {
+                    string filePath = Path.Combine(reportDir, filename);
+                    await File.WriteAllTextAsync(filePath, content);
+                    Console.WriteLine($"  ✓ Saved: {filename}");
+                }
+            }
+
+            // Create consolidated report
+            await SaveConsolidatedReportAsync(reportDir, response);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️  Warning: Could not save reports: {ex.Message}");
+        }
+    }
+
+    private async Task SaveConsolidatedReportAsync(string reportDir, StreamState response)
+    {
+        try
+        {
+            var consolidatedPath = Path.Combine(reportDir, "00_Consolidated_Report.md");
+
+            var consolidatedContent = new StringBuilder();
+
+            consolidatedContent.AppendLine("# Deep Research Agent - Consolidated Report");
+            consolidatedContent.AppendLine();
+            consolidatedContent.AppendLine($"**Research ID:** {response.ResearchId}");
+            consolidatedContent.AppendLine($"**Generated:** {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            consolidatedContent.AppendLine();
+            consolidatedContent.AppendLine("---");
+            consolidatedContent.AppendLine();
+
+            // Helper method to add sections
+            void AddSection(string title, string? content)
+            {
+                if (!string.IsNullOrWhiteSpace(content))
+                {
+                    consolidatedContent.AppendLine($"## {title}");
+                    consolidatedContent.AppendLine();
+                    consolidatedContent.AppendLine(content);
+                    consolidatedContent.AppendLine();
+                    consolidatedContent.AppendLine(new string('-', 50));
+                    consolidatedContent.AppendLine();
+                }
+            }
+
+            AddSection("User Query", response.UserQuery);
+            AddSection("Brief Preview", response.BriefPreview);
+            AddSection("Research Brief", response.ResearchBrief);
+            AddSection("Draft Report", response.DraftReport);
+            AddSection("Refined Summary", response.RefinedSummary);
+            AddSection("Supervisor Update", response.SupervisorUpdate);
+            AddSection("Final Report", response.FinalReport);
+
+            await File.WriteAllTextAsync(consolidatedPath, consolidatedContent.ToString());
+            Console.WriteLine($"  ✓ Saved: 00_Consolidated_Report.md");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️  Warning: Could not save consolidated report: {ex.Message}");
+        }
     }
 }
 
@@ -645,4 +802,103 @@ Minimum payload to accomplish the mission. Moving mass into space is costly, so 
 A focal distance of ~550 AU should be reviewed. Could we shorten that by creating a large circular array, capturing the light before the focal point?
 
 If we do have to go out to ~550 AU(s). Where in the known universe could we get a shorter focal point, i.e. where would be a better place for someone to look at Earth or other galaxies? ";
+
+
+
+
+    public static string ComplexSemiAutonomousDev => @"  
+**GOAL**
+## Hybrid TTD‑TOAR Architecture for semi autonomous AI‑Assisted Development
+
+## Definitions
+- TOAR (Think‑Act‑Observe‑Repeat): An iterative, test‑driven development approach where an LLM agent generates code, runs tests, observes results, and refines the code based on feedback until tests pass.
+- TTD (Time‑Test Diffusion): A research‑style drafting process where an LLM generates multiple iterations of code drafts over time, with confidence scoring to identify areas of uncertainty or low confidence.
+
+## Context and Problem Statement
+
+Our project aims to build a fully automated, confidence‑driven software development pipeline that leverages LLM‑based agents to generate, test, and refine code. We need a lightweight, reproducible architecture that:
+
+1. **Combines the research‑style drafting of Time‑Test Diffusion (TTD)** with the test‑driven refinement of Think‑Act‑Observe‑Repeat (TAOR).
+2. **Runs all code‑generation and testing inside an isolated Docker sandbox** to guarantee reproducibility and security.
+3. **Maintains a clear audit trail** via Git checkpoints and observable terminal output.
+
+The architecture must also be easy to maintain and extend for future language support and additional agents.
+
+## Decision Drivers
+
+- **Speed** – Rapid prototyping and iteration.
+- **Quality** – High confidence in final artifacts through iterative testing.
+- **Reproducibility** – Deterministic sandbox execution.
+- **Observability** – Real‑time terminal logs and metrics.
+- **Maintainability** – Modular design that can evolve.
+
+## Considered Options
+
+1. Reverse engineering existing monolithic AI‑assisted development tools and adapting them to our needs.  
+   *Pros:* Leverage existing solutions; *Cons:* May be complex and less flexible.
+
+2. Reverse engingering TOAR architecture and adapting it to include TTD‑style drafting and confidence scoring.  
+   *Pros:* Builds on a proven architecture; *Cons:* May require significant modifications.
+
+3. Reverse engineering TTD architecture and adapting it to include TOAR‑style test‑driven refinement.  
+   *Pros:* Leverages TTD's strength in handling uncertainty; *Cons:* May not integrate well with test‑driven workflows.
+
+3. Researching and implementing a custom architecture from scratch, combining TTD and TOAR principles.  
+   *Pros:* Tailored to our needs; *Cons:* Higher initial development effort. 
+
+4. **Pure TTD Pipeline** – Use TTD alone to generate code and rely on external testing scripts.  
+   *Pros:* Simpler; *Cons:* No tight integration of test feedback.
+
+5. **Pure TOAR Pipeline** – Use TOAR exclusively, treating LLM as a code generator without a draft‑centric diffusion stage.  
+   *Pros:* Direct test‑driven workflow; *Cons:* Lacks a global context and confidence estimate.
+
+6. **Hybrid TTD‑TOAR (Chosen)** – Orchestrate TTD for drafting and confidence scoring, then hand off to TOAR for code generation, testing, and refactoring.  
+   *Pros:* Combines strengths of both; *Cons:* Slightly higher orchestration complexity.
+
+7. **External CI Integration** – Separate the pipeline from the orchestrator, relying on CI tools to run tests.  
+   *Pros:* Decouples concerns; *Cons:* Loss of real‑time feedback.
+
+## Technology
+1. TOAR for iterative code generation and refinement based on test outcomes, ensuring that the generated code meets quality standards through continuous feedback loops.
+2. TTD for generating initial drafts and confidence estimates, guiding the THOR agent's focus on areas of low confidence or high uncertainty. THOR then takes these drafts, generates code, runs tests, and iteratively refines based on test outcomes.
+3. Docker for isolated, reproducible execution.
+4. Git for version control and audit trails.
+5. LLM‑based agents for code generation, testing, and refinement.
+6. Observability tools (e.g., terminal output, logs, metrics dashboards) for real‑time feedback.
+7. Agent orchestration layer to manage the flow between TTD and THOR stages, ensuring smooth handoffs and integration of feedback.
+8. Vibe code negation and other prompting techniques to enhance the quality of generated code and tests, especially in areas identified as low confidence by TTD.
+9. ADRs for documenting architectural decisions and rationale, ensuring maintainability and clarity for future developers and driving informed evolution of the architecture.
+
+## Architecture should be 
+- Designed to allow for easy extension to other programming languages and frameworks in the future. This means abstracting away language‑specific details and creating modular components that can be swapped out or extended as needed.
+- Should include a clear mechanism for handling and integrating test feedback into the code generation process. This could involve using confidence scores from TTD to prioritize areas for THOR to focus on, or implementing a feedback loop where test results directly inform subsequent code generation iterations.
+- Should provide real‑time observability into the pipeline's operations, including logs of generated code, test results, and confidence scores. This will allow developers to monitor progress and intervene when necessary.
+- Should be designed with security in mind, especially since it involves executing generated code. The Docker sandbox should be configured to minimize potential risks, and there should be safeguards in place to prevent malicious code generation or execution.
+- Should include a clear audit trail of all actions taken by the agents, including code generation, test execution, and any manual interventions. This could be achieved through Git checkpoints, detailed logs, and possibly a dashboard that tracks the pipeline's history and current state.
+- Should be designed to allow for easy maintenance and evolution over time. This means using clear documentation, modular design principles, and possibly implementing an ADR (Architectural Decision Record) system to document key decisions and their rationale for future reference.
+- Should consider the potential for scaling the pipeline in the future, both in terms of handling larger codebases and supporting more complex testing scenarios. This might involve designing the architecture to allow for distributed execution or integrating with cloud services for additional compute resources when needed.
+- Should include a mechanism for handling edge cases and unexpected scenarios, such as test failures that are not easily resolved through iterative refinement. This could involve implementing a fallback strategy or allowing for human intervention when certain thresholds of failure are reached.
+
+
+**Keep in mind**
+We want the human in the loop
+- Setting the high‑level goals, constraints, and priorities for the project.
+- Monitoring the pipeline's progress and intervening when necessary to provide guidance or make adjustments.
+- Having final review and decision making, but we want to automate as much of the code generation and testing process as possible to maximize efficiency and confidence in the final product.
+
+
+**Finally**
+Iterate over the question three time or less if there is no room for improvement. Ask questions if clarity is needed. Rethink old ideas. A metaphor, but dig deep, look for new or evolving technology that might help.";
+
+
+
+    public static string ClarifiedSemiAutonomousDev => @"
+    Architecture should be 
+    - Should be designed to allow for easy extension to other programming languages and frameworks in the future. This means abstracting away language‑specific details and creating modular components that can be swapped out or extended as needed.
+    - Should include a clear mechanism for handling and integrating test feedback into the code generation process. This could involve using confidence scores from TTD to prioritize areas for THOR to focus on, or implementing a feedback loop where test results directly inform subsequent code generation iterations.
+    - Should provide real‑time observability into the pipeline's operations, including logs of generated code, test results, and confidence scores. This will allow developers to monitor progress and intervene when necessary.
+    - Should be designed with security in mind, especially since it involves executing generated code. The Docker sandbox should be configured to minimize potential risks, and there should be safeguards in place to prevent malicious code generation or execution.
+    - Should include a clear audit trail of all actions taken by the agents, including code generation, test execution, and any manual interventions. This could be achieved through Git checkpoints, detailed logs, and possibly a dashboard that tracks the pipeline's history and current state.
+";
+
 }

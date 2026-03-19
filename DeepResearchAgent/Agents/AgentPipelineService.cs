@@ -8,6 +8,7 @@ using DeepResearchAgent.Agents.Adapters;
 using DeepResearchAgent.Agents.Middleware;
 using DeepResearchAgent.Model;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
 using DeepResearchAgent.Services.Checkpointing;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
@@ -28,7 +29,7 @@ public class AgentPipelineService
     private readonly object _workflowLock = new();
     
     public AgentPipelineService(
-        OllamaService llmService,
+        ILlmProvider llmService,
         ToolInvocationService toolService,
         ILogger<AgentPipelineService> logger,
         ICheckpointService? checkpointService = null)
@@ -50,7 +51,7 @@ public class AgentPipelineService
     /// Build ClarifyAgent with middleware pipeline:
     /// Logging → Timing → Retry
     /// </summary>
-    private AIAgent BuildClarifyAgent(OllamaService llmService)
+    private AIAgent BuildClarifyAgent(ILlmProvider llmService)
     {
         var baseAgent = new ClarifyAgentAdapter(llmService);
         
@@ -76,7 +77,7 @@ public class AgentPipelineService
     /// Build ResearchBriefAgent with middleware pipeline:
     /// Logging → Timing
     /// </summary>
-    private AIAgent BuildResearchBriefAgent(OllamaService llmService)
+    private AIAgent BuildResearchBriefAgent(ILlmProvider llmService)
     {
         var baseAgent = new ResearchBriefAgentAdapter(llmService);
         
@@ -94,7 +95,7 @@ public class AgentPipelineService
     /// Build ResearcherAgent with middleware pipeline:
     /// Logging → Timing (60s threshold) → Retry (3 attempts)
     /// </summary>
-    private AIAgent BuildResearcherAgent(OllamaService llmService, ToolInvocationService toolService)
+    private AIAgent BuildResearcherAgent(ILlmProvider llmService, ToolInvocationService toolService)
     {
         var baseAgent = new ResearcherAgentAdapter(llmService, toolService);
         

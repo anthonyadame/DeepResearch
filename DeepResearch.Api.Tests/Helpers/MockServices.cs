@@ -1,45 +1,43 @@
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
+using DeepResearchAgent.Configuration;
 using DeepResearch.Api.Services.ChatHistory;
 using Microsoft.Extensions.Logging;
 
 namespace DeepResearch.Api.Tests.Helpers;
 
 /// <summary>
-/// Mock implementation of OllamaService for testing
-/// Since OllamaService methods are not virtual, we provide a working instance
-/// that doesn't require an actual Ollama server
+/// Mock implementation of ILlmProvider for testing
+/// Provides a working instance that doesn't require an actual LLM server
 /// </summary>
-public class MockOllamaService : OllamaService
+public class MockLlmProvider : ILlmProvider
 {
-    public MockOllamaService() : base(
-        "http://localhost:11434",
-        "llama3.1:8b",
-        new HttpClient(new MockHttpMessageHandler()),
-        null)
-    {
-    }
-}
+    public string ProviderName => "mock";
+    public string DefaultModel => "mock-model";
 
-/// <summary>
-/// Mock HTTP handler that returns valid Ollama API responses
-/// </summary>
-public class MockHttpMessageHandler : HttpMessageHandler
-{
-    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    public Task<OllamaChatMessage> InvokeAsync(
+        List<OllamaChatMessage> messages,
+        string? model = null,
+        LlmModelTier? tier = null,
+        CancellationToken cancellationToken = default)
     {
-        // Return a mock Ollama chat response
-        var mockResponse = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+        return Task.FromResult(new OllamaChatMessage
         {
-            Content = new StringContent(@"{
-                ""model"": ""llama3.1:8b"",
-                ""message"": {
-                    ""role"": ""assistant"",
-                    ""content"": ""Mock LLM response for testing""
-                }
-            }", System.Text.Encoding.UTF8, "application/json")
-        };
+            Role = "assistant",
+            Content = "Mock LLM response for testing"
+        });
+    }
 
-        return Task.FromResult(mockResponse);
+    public async IAsyncEnumerable<string> InvokeStreamingAsync(
+        List<OllamaChatMessage> messages,
+        string? model = null,
+        LlmModelTier? tier = null,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        yield return "Mock ";
+        yield return "streaming ";
+        yield return "response";
+        await Task.CompletedTask;
     }
 }
 

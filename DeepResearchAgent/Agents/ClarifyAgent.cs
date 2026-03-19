@@ -2,6 +2,9 @@ using System.Globalization;
 using DeepResearchAgent.Models;
 using DeepResearchAgent.Prompts;
 using DeepResearchAgent.Services;
+using DeepResearchAgent.Services.LLM;
+using DeepResearchAgent.Services.Caching;
+using DeepResearchAgent.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace DeepResearchAgent.Agents;
@@ -18,17 +21,20 @@ namespace DeepResearchAgent.Agents;
 /// </summary>
 public class ClarifyAgent
 {
-    protected readonly OllamaService _llmService;
+    protected readonly ILlmProvider _llmService;
     protected readonly ILogger<ClarifyAgent>? _logger;
+    protected readonly LlmResponseCache? _llmCache;
 
     protected virtual string AgentName => "ClarifyAgent";
 
     public ClarifyAgent(
-        OllamaService llmService, 
-        ILogger<ClarifyAgent>? logger = null)
+        ILlmProvider llmService, 
+        ILogger<ClarifyAgent>? logger = null,
+        LlmResponseCache? llmCache = null)
     {
         _llmService = llmService ?? throw new ArgumentNullException(nameof(llmService));
         _logger = logger;
+        _llmCache = llmCache;
     }
 
     /// <summary>
@@ -61,7 +67,9 @@ public class ClarifyAgent
             };
             
             var response = await _llmService.InvokeWithStructuredOutputAsync<ClarificationResult>(
-                ollamaMessages, 
+                ollamaMessages,
+                tier: LlmModelTier.Fast,  // Use Fast tier (7B) for simple validation
+                cache: _llmCache,
                 cancellationToken: cancellationToken);
             
             _logger?.LogInformation(
